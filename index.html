@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#4CAF50">
+    <title>📄 Mis Facturas</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📄 Mis Facturas</h1>
+            <p class="subtitle">Organiza tus facturas fácilmente</p>
+        </header>
+
+        <div class="add-section">
+            <h2>➕ Nueva Factura</h2>
+            
+            <div class="camera-section">
+                <input type="file" id="photo-input" accept="image/*" capture="environment">
+                <button class="btn-camera" onclick="document.getElementById('photo-input').click()">
+                    📷 Tomar Foto
+                </button>
+                <img id="photo-preview" style="display:none;">
+            </div>
+
+            <form id="invoice-form">
+                <input type="date" id="fecha" required placeholder="Fecha">
+                <input type="number" id="importe" step="0.01" required placeholder="Importe (€)">
+                <input type="text" id="concepto" required placeholder="Concepto">
+                <select id="categoria" required>
+                    <option value="">Seleccionar categoría</option>
+                    <option value="alimentacion">🍔 Alimentación</option>
+                    <option value="transporte">🚗 Transporte</option>
+                    <option value="suministros">💡 Suministros</option>
+                    <option value="otros">📦 Otros</option>
+                </select>
+                <button type="submit" class="btn-save">💾 Guardar Factura</button>
+            </form>
+        </div>
+
+        <div class="list-section">
+            <h2>📋 Mis Facturas (<span id="count">0</span>)</h2>
+            <div id="invoice-list"></div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
