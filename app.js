@@ -163,8 +163,11 @@ function renderInvoices() {
 
 // Eliminar factura
 function deleteInvoice(id) {
-    if (confirm('¿Eliminar esta factura?')) {
-        invoices = invoices.filter(function(inv) { return inv.id !== id; });
+    var confirmado = confirm('¿Eliminar esta factura?');
+    if (confirmado) {
+        invoices = invoices.filter(function(inv) { 
+            return inv.id !== id; 
+        });
         localStorage.setItem('invoices', JSON.stringify(invoices));
         renderInvoices();
     }
