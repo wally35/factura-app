@@ -9,15 +9,46 @@ const form = document.getElementById('invoice-form');
 const invoiceList = document.getElementById('invoice-list');
 const count = document.getElementById('count');
 
-// Cargar foto
-photoInput.addEventListener('change', (e) => {
+// Cargar foto y procesarla con OCR
+photoInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (file) {
         const reader = new FileReader();
-        reader.onload = (e) => {
+        reader.onload = async (e) => {
             currentPhoto = e.target.result;
             photoPreview.src = currentPhoto;
             photoPreview.style.display = 'block';
+            
+            // Mostrar mensaje de procesamiento
+            alert('📸 Procesando imagen... Esto puede tardar unos segundos');
+            
+            // Procesar con OCR
+            try {
+                const result = await Tesseract.recognize(
+                    currentPhoto,
+                    'spa',
+                    {
+                        logger: m => console.log(m)
+                    }
+                );
+                
+                const text = result.data.text;
+                console.log('Texto detectado:', text);
+                
+                // Intentar extraer importe
+                const amountMatch = text.match(/(\d+[.,]\d{2})\s*€?/);
+                if (amountMatch) {
+                    const amount = amountMatch[1].replace(',', '.');
+                    document.getElementById('importe').value = amount;
+                    alert('✅ ¡Importe detectado automáticamente! Revisa que sea correcto.');
+                } else {
+                    alert('⚠️ No se pudo detectar el importe automáticamente. Introdúcelo manualmente.');
+                }
+                
+            } catch (error) {
+                console.error('Error en OCR:', error);
+                alert('❌ Error al procesar la imagen. Introduce los datos manualmente.');
+            }
         };
         reader.readAsDataURL(file);
     }
@@ -64,7 +95,7 @@ function renderInvoices() {
                 <div>
                     <div class="invoice-amount">${invoice.importe.toFixed(2)}€</div>
                     <div class="invoice-details">
-                        ${getCategoryEmoji(invoice.categoria)} ${invoice.categoria} • ${formatDate(invoice.fecha)}
+                        ${getCategoryEmoji(invoice.categoria)} ${invoice.categoria || 'Sin categoría'} • ${formatDate(invoice.fecha)}
                     </div>
                 </div>
                 <button class="btn-delete" onclick="deleteInvoice(${invoice.id})">🗑️</button>
@@ -87,6 +118,7 @@ function deleteInvoice(id) {
 // Utilidades
 function getCategoryEmoji(category) {
     const emojis = {
+        'electrodomesticos': '⚡',
         'alimentacion': '🍔',
         'transporte': '🚗',
         'suministros': '💡',
