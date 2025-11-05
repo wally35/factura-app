@@ -37,9 +37,10 @@
                 <div style="display: flex; gap: 10px;">
     <input type="text" id="fecha" required placeholder="dd/mm/aaaa" maxlength="10" 
            style="flex: 1; padding: 15px; font-size: 1em; border: 2px solid #ddd; border-radius: 10px;">
-    <label for="fecha-calendar" style="padding: 15px 20px; background: #667eea; color: white; border-radius: 10px; cursor: pointer; font-size: 1.2em; display: flex; align-items: center; justify-content: center;">
+    <button type="button" onclick="document.getElementById('fecha-calendar').showPicker()" 
+            style="padding: 15px 20px; background: #667eea; color: white; border: none; border-radius: 10px; cursor: pointer; font-size: 1.2em;">
         📅
-    </label>
+    </button>
     <input type="date" id="fecha-calendar" style="position: absolute; opacity: 0; width: 0; height: 0;">
 </div>
                 <input type="number" id="importe" step="0.01" required placeholder="Importe (€)">
