@@ -159,14 +159,15 @@ form.addEventListener('submit', function(e) {
     }
     
     const invoice = {
-        id: Date.now(),
-        fecha: fecha,
-        importe: parseFloat(document.getElementById('importe').value),
-        concepto: document.getElementById('concepto').value,
-        categoria: document.getElementById('categoria').value,
-        photo: currentPhoto,
-        timestamp: new Date().toISOString()
-    };
+    id: Date.now(),
+    fecha: fecha,
+    importe: parseFloat(document.getElementById('importe').value),
+    concepto: document.getElementById('concepto').value,
+    categoria: document.getElementById('categoria').value,
+    garantia: document.getElementById('garantia').value,
+    photo: currentPhoto,
+    timestamp: new Date().toISOString()
+};
     
     invoices.unshift(invoice);
     localStorage.setItem('invoices', JSON.stringify(invoices));
@@ -200,6 +201,8 @@ function renderInvoices() {
                 '<button class="btn-delete" onclick="deleteInvoice(' + invoice.id + ')">🗑️</button>' +
             '</div>' +
             '<div><strong>' + invoice.concepto + '</strong></div>' +
+(invoice.garantia ? '<div style="color: #666; font-size: 0.9em; margin-top: 5px;">⏰ Garantía hasta: ' + formatearFechaGarantia(invoice.garantia) + '</div>' : '') +
+
             (invoice.photo ? '<img src="' + invoice.photo + '" alt="Factura">' : '') +
         '</div>';
     }).join('');
@@ -230,4 +233,13 @@ function getCategoryEmoji(category) {
 }
 
 // Cargar facturas al inicio
+// Formatear fecha de garantía
+function formatearFechaGarantia(fechaISO) {
+    if (!fechaISO) return '';
+    const fecha = new Date(fechaISO);
+    const dia = String(fecha.getDate()).padStart(2, '0');
+    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+    const año = fecha.getFullYear();
+    return dia + '/' + mes + '/' + año;
+}
 renderInvoices();
