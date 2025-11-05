@@ -82,13 +82,23 @@ async function procesarFoto(file) {
                 const text = result.data.text;
                 console.log('Texto detectado:', text);
                 
-                const amountMatch = text.match(/(\d+[.,]\d{2})\s*€?/);
-                if (amountMatch) {
-                    const amount = amountMatch[1].replace(',', '.');
-                    document.getElementById('importe').value = amount;
-                    alert('✅ ¡Importe detectado! Revisa que sea correcto.');
-                } else {
-                    alert('⚠️ No se detectó el importe. Introdúcelo manualmente.');
+                // Buscar primero "Total" o "TOTAL"
+const totalMatch = text.match(/total[:\s]*(\d+[.,]\d{2})\s*€?/i);
+if (totalMatch) {
+    const amount = totalMatch[1].replace(',', '.');
+    document.getElementById('importe').value = amount;
+    alert('✅ ¡Total detectado: ' + amount + '€! Revisa que sea correcto.');
+} else {
+    // Si no encuentra "Total", busca cualquier importe
+    const amountMatch = text.match(/(\d+[.,]\d{2})\s*€?/);
+    if (amountMatch) {
+        const amount = amountMatch[1].replace(',', '.');
+        document.getElementById('importe').value = amount;
+        alert('⚠️ Importe detectado: ' + amount + '€. Verifica que sea el total correcto.');
+    } else {
+        alert('❌ No se detectó ningún importe. Introdúcelo manualmente.');
+    }
+}
                 }
             } catch (error) {
                 console.error('Error en OCR:', error);
