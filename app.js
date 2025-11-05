@@ -8,7 +8,19 @@ const photoPreview = document.getElementById('photo-preview');
 const form = document.getElementById('invoice-form');
 const invoiceList = document.getElementById('invoice-list');
 const count = document.getElementById('count');
-
+// Auto-formato de fecha
+document.getElementById('fecha').addEventListener('input', (e) => {
+    let value = e.target.value.replace(/\D/g, ''); // Solo números
+    
+    if (value.length >= 2) {
+        value = value.slice(0, 2) + '/' + value.slice(2);
+    }
+    if (value.length >= 5) {
+        value = value.slice(0, 5) + '/' + value.slice(5, 9);
+    }
+    
+    e.target.value = value;
+});
 // Cargar foto y procesarla con OCR
 photoInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
