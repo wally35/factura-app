@@ -8,18 +8,39 @@ const photoPreview = document.getElementById('photo-preview');
 const form = document.getElementById('invoice-form');
 const invoiceList = document.getElementById('invoice-list');
 const count = document.getElementById('count');
-// Auto-formato de fecha
-document.getElementById('fecha').addEventListener('input', (e) => {
+// Auto-formato de fecha mejorado
+const fechaInput = document.getElementById('fecha');
+const calendarioInput = document.getElementById('fecha-calendar');
+
+fechaInput.addEventListener('input', (e) => {
     let value = e.target.value.replace(/\D/g, ''); // Solo números
+    let formatted = '';
     
-    if (value.length >= 2) {
-        value = value.slice(0, 2) + '/' + value.slice(2);
+    if (value.length > 0) {
+        formatted = value.substring(0, 2);
+    }
+    if (value.length >= 3) {
+        formatted += '/' + value.substring(2, 4);
     }
     if (value.length >= 5) {
-        value = value.slice(0, 5) + '/' + value.slice(5, 9);
+        formatted += '/' + value.substring(4, 8);
     }
     
-    e.target.value = value;
+    e.target.value = formatted;
+});
+
+// Función para abrir calendario
+function abrirCalendario() {
+    calendarioInput.showPicker();
+}
+
+// Cuando se selecciona fecha del calendario
+calendarioInput.addEventListener('change', (e) => {
+    const fecha = new Date(e.target.value);
+    const dia = String(fecha.getDate()).padStart(2, '0');
+    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+    const año = fecha.getFullYear();
+    fechaInput.value = `${dia}/${mes}/${año}`;
 });
 // Cargar foto y procesarla con OCR
 photoInput.addEventListener('change', async (e) => {
