@@ -51,6 +51,27 @@ fechaManual.addEventListener('input', function(e) {
     e.target.value = formatted;
 });
 
+// Mostrar/ocultar campo de garantía personalizada
+function toggleGarantiaPersonalizada() {
+    const garantiaTipo = document.getElementById('garantia-tipo').value;
+    const garantiaCustom = document.getElementById('garantia-custom');
+    
+    if (garantiaTipo === 'custom') {
+        garantiaCustom.style.display = 'block';
+        garantiaCustom.setAttribute('required', '');
+    } else {
+        garantiaCustom.style.display = 'none';
+        garantiaCustom.removeAttribute('required');
+    }
+}
+
+// Calcular fecha de garantía
+function calcularGarantia(fechaCompra, años) {
+    const fecha = new Date(fechaCompra);
+    fecha.setFullYear(fecha.getFullYear() + parseInt(años));
+    return fecha.toISOString().split('T')[0];
+}
+
 // Procesar foto de cámara
 photoCamera.addEventListener('change', async function(e) {
     await procesarFoto(e.target.files[0]);
@@ -147,27 +168,44 @@ async function procesarFoto(file) {
 form.addEventListener('submit', function(e) {
     e.preventDefault();
     
+    // Obtener fecha
     let fecha;
+    let fechaISO;
     if (modoManual) {
         fecha = fechaManual.value;
+        // Convertir dd/mm/yyyy a ISO
+        const partes = fecha.split('/');
+        fechaISO = partes[2] + '-' + partes[1] + '-' + partes[0];
     } else {
-        const fechaObj = new Date(fechaCalendario.value);
+        fechaISO = fechaCalendario.value;
+        const fechaObj = new Date(fechaISO);
         const dia = String(fechaObj.getDate()).padStart(2, '0');
         const mes = String(fechaObj.getMonth() + 1).padStart(2, '0');
         const año = fechaObj.getFullYear();
         fecha = dia + '/' + mes + '/' + año;
     }
     
+    // Calcular garantía
+    let garantiaHasta = '';
+    const garantiaTipo = document.getElementById('garantia-tipo').value;
+    
+    if (garantiaTipo === 'custom') {
+        garantiaHasta = document.getElementById('garantia-custom').value;
+    } else if (garantiaTipo !== '') {
+        garantiaHasta = calcularGarantia(fechaISO, garantiaTipo);
+    }
+    
     const invoice = {
-    id: Date.now(),
-    fecha: fecha,
-    importe: parseFloat(document.getElementById('importe').value),
-    concepto: document.getElementById('concepto').value,
-    categoria: document.getElementById('categoria').value,
-    garantia: document.getElementById('garantia').value,
-    photo: currentPhoto,
-    timestamp: new Date().toISOString()
-};
+        id: Date.now(),
+        fecha: fecha,
+        importe: parseFloat(document.getElementById('importe').value),
+        concepto: document.getElementById('concepto').value,
+        categoria: document.getElementById('categoria').value,
+        garantia: garantiaHasta,
+        garantiaTipo: garantiaTipo,
+        photo: currentPhoto,
+        timestamp: new Date().toISOString()
+    };
     
     invoices.unshift(invoice);
     localStorage.setItem('invoices', JSON.stringify(invoices));
@@ -175,6 +213,7 @@ form.addEventListener('submit', function(e) {
     form.reset();
     photoPreview.style.display = 'none';
     currentPhoto = null;
+    toggleGarantiaPersonalizada(); // Ocultar campo personalizado
     
     renderInvoices();
     alert('✅ Factura guardada correctamente');
@@ -190,6 +229,28 @@ function renderInvoices() {
     }
     
     invoiceList.innerHTML = invoices.map(function(invoice) {
+        let garantiaHTML = '';
+        if (invoice.garantia) {
+            const garantiaFecha = new Date(invoice.garantia);
+            const hoy = new Date();
+            const diasRestantes = Math.floor((garantiaFecha - hoy) / (1000 * 60 * 60 * 24));
+            
+            let garantiaColor = '#666';
+            let garantiaIcono = '⏰';
+            
+            if (diasRestantes < 0) {
+                garantiaColor = '#999';
+                garantiaIcono = '❌';
+                garantiaHTML = '<div style="color: ' + garantiaColor + '; font-size: 0.9em; margin-top: 5px;">' + garantiaIcono + ' Garantía caducada</div>';
+            } else if (diasRestantes < 90) {
+                garantiaColor = '#ff6b6b';
+                garantiaIcono = '⚠️';
+                garantiaHTML = '<div style="color: ' + garantiaColor + '; font-size: 0.9em; margin-top: 5px;">' + garantiaIcono + ' Garantía hasta: ' + formatearFecha(invoice.garantia) + ' (' + diasRestantes + ' días)</div>';
+            } else {
+                garantiaHTML = '<div style="color: ' + garantiaColor + '; font-size: 0.9em; margin-top: 5px;">' + garantiaIcono + ' Garantía hasta: ' + formatearFecha(invoice.garantia) + '</div>';
+            }
+        }
+        
         return '<div class="invoice-item">' +
             '<div class="invoice-header">' +
                 '<div>' +
@@ -201,8 +262,7 @@ function renderInvoices() {
                 '<button class="btn-delete" onclick="deleteInvoice(' + invoice.id + ')">🗑️</button>' +
             '</div>' +
             '<div><strong>' + invoice.concepto + '</strong></div>' +
-(invoice.garantia ? '<div style="color: #666; font-size: 0.9em; margin-top: 5px;">⏰ Garantía hasta: ' + formatearFechaGarantia(invoice.garantia) + '</div>' : '') +
-
+            garantiaHTML +
             (invoice.photo ? '<img src="' + invoice.photo + '" alt="Factura">' : '') +
         '</div>';
     }).join('');
@@ -232,9 +292,7 @@ function getCategoryEmoji(category) {
     return emojis[category] || '📄';
 }
 
-// Cargar facturas al inicio
-// Formatear fecha de garantía
-function formatearFechaGarantia(fechaISO) {
+function formatearFecha(fechaISO) {
     if (!fechaISO) return '';
     const fecha = new Date(fechaISO);
     const dia = String(fecha.getDate()).padStart(2, '0');
@@ -242,4 +300,6 @@ function formatearFechaGarantia(fechaISO) {
     const año = fecha.getFullYear();
     return dia + '/' + mes + '/' + año;
 }
+
+// Cargar facturas al inicio
 renderInvoices();
