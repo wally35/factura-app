@@ -30,10 +30,6 @@ fechaInput.addEventListener('input', (e) => {
     e.target.value = formatted;
 });
 
-// Función para abrir calendario
-function abrirCalendario() {
-    calendarioInput.showPicker();
-}
 
 // Cuando se selecciona fecha del calendario
 calendarioInput.addEventListener('change', (e) => {
