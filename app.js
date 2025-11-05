@@ -3,15 +3,16 @@ let invoices = JSON.parse(localStorage.getItem('invoices')) || [];
 let currentPhoto = null;
 
 // Elementos del DOM
-const photoInput = document.getElementById('photo-input');
+const photoCamera = document.getElementById('photo-camera');
+const photoGallery = document.getElementById('photo-gallery');
 const photoPreview = document.getElementById('photo-preview');
 const form = document.getElementById('invoice-form');
 const invoiceList = document.getElementById('invoice-list');
 const count = document.getElementById('count');
-// Auto-formato de fecha mejorado
 const fechaInput = document.getElementById('fecha');
 const calendarioInput = document.getElementById('fecha-calendar');
 
+// Auto-formato de fecha mejorado
 fechaInput.addEventListener('input', (e) => {
     let value = e.target.value.replace(/\D/g, ''); // Solo números
     let formatted = '';
@@ -42,9 +43,19 @@ calendarioInput.addEventListener('change', (e) => {
     const año = fecha.getFullYear();
     fechaInput.value = `${dia}/${mes}/${año}`;
 });
-// Cargar foto y procesarla con OCR
-photoInput.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
+
+// Procesar foto de cámara
+photoCamera.addEventListener('change', async (e) => {
+    await procesarFoto(e.target.files[0]);
+});
+
+// Procesar foto de galería
+photoGallery.addEventListener('change', async (e) => {
+    await procesarFoto(e.target.files[0]);
+});
+
+// Función para procesar foto con OCR
+async function procesarFoto(file) {
     if (file) {
         const reader = new FileReader();
         reader.onload = async (e) => {
@@ -85,7 +96,7 @@ photoInput.addEventListener('change', async (e) => {
         };
         reader.readAsDataURL(file);
     }
-});
+}
 
 // Guardar factura
 form.addEventListener('submit', (e) => {
@@ -128,7 +139,7 @@ function renderInvoices() {
                 <div>
                     <div class="invoice-amount">${invoice.importe.toFixed(2)}€</div>
                     <div class="invoice-details">
-                        ${getCategoryEmoji(invoice.categoria)} ${invoice.categoria || 'Sin categoría'} • ${formatDate(invoice.fecha)}
+                        ${getCategoryEmoji(invoice.categoria)} ${invoice.categoria || 'Sin categoría'} • ${invoice.fecha}
                     </div>
                 </div>
                 <button class="btn-delete" onclick="deleteInvoice(${invoice.id})">🗑️</button>
@@ -158,11 +169,6 @@ function getCategoryEmoji(category) {
         'otros': '📦'
     };
     return emojis[category] || '📄';
-}
-
-function formatDate(dateString) {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 // Cargar facturas al inicio
