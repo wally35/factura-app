@@ -80,10 +80,57 @@ async function procesarFoto(file) {
                 );
                 
                 const text = result.data.text;
-                console.log('Texto detectado:', text);
-                
-                // Buscar primero "Total" o "TOTAL"
+console.log('Texto detectado:', text);
+
+// EXTRAER DATOS INTELIGENTEMENTE
+
+// 1. Buscar TOTAL
 const totalMatch = text.match(/total[:\s]*(\d+[.,]\d{2})\s*€?/i);
+if (totalMatch) {
+    const amount = totalMatch[1].replace(',', '.');
+    document.getElementById('importe').value = amount;
+}
+
+// 2. Buscar FECHA (varios formatos)
+const fechaMatch = text.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
+if (fechaMatch) {
+    const dia = fechaMatch[1].padStart(2, '0');
+    const mes = fechaMatch[2].padStart(2, '0');
+    let año = fechaMatch[3];
+    if (año.length === 2) año = '20' + año;
+    
+    // Si está en modo manual, rellenar directamente
+    if (modoManual) {
+        fechaManual.value = dia + '/' + mes + '/' + año;
+    } else {
+        // Si está en modo calendario, convertir
+        fechaCalendario.value = año + '-' + mes + '-' + dia;
+    }
+}
+
+// 3. Buscar NOMBRE DEL COMERCIO (primeras 3 líneas)
+const lineas = text.split('\n').filter(l => l.trim().length > 0);
+let comercio = '';
+for (let i = 0; i < Math.min(3, lineas.length); i++) {
+    const linea = lineas[i].trim();
+    // Ignorar si es solo números o símbolos
+    if (linea.length > 3 && /[a-zA-Z]/.test(linea)) {
+        comercio = linea;
+        break;
+    }
+}
+if (comercio && !document.getElementById('concepto').value) {
+    document.getElementById('concepto').value = comercio.substring(0, 50);
+}
+
+// 4. MENSAJE FINAL
+let mensaje = '✅ Datos detectados:\n';
+if (totalMatch) mensaje += '- Total: ' + totalMatch[1] + '€\n';
+if (fechaMatch) mensaje += '- Fecha detectada\n';
+if (comercio) mensaje += '- Comercio: ' + comercio.substring(0, 30) + '\n';
+mensaje += '\n⚠️ Revisa que todo sea correcto antes de guardar.';
+
+alert(mensaje);
 if (totalMatch) {
     const amount = totalMatch[1].replace(',', '.');
     document.getElementById('importe').value = amount;
