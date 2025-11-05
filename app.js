@@ -3,6 +3,9 @@ let invoices = JSON.parse(localStorage.getItem('invoices')) || [];
 let currentPhoto = null;
 let modoManual = false;
 
+// API Key de Gemini
+const GEMINI_API_KEY = 'AIzaSyCvpPK3c2kUdQupOMO51ih_PcBj8-VOTcw';
+
 // Elementos del DOM
 const photoCamera = document.getElementById('photo-camera');
 const photoGallery = document.getElementById('photo-gallery');
@@ -82,7 +85,7 @@ photoGallery.addEventListener('change', async function(e) {
     await procesarFoto(e.target.files[0]);
 });
 
-// Función para procesar foto con OCR
+// Función para procesar foto con Gemini AI
 async function procesarFoto(file) {
     if (file) {
         const reader = new FileReader();
@@ -91,73 +94,100 @@ async function procesarFoto(file) {
             photoPreview.src = currentPhoto;
             photoPreview.style.display = 'block';
             
-            alert('📸 Procesando imagen... Esto puede tardar unos segundos');
+            alert('🤖 Analizando factura con IA... Esto puede tardar unos segundos');
             
             try {
-                const result = await Tesseract.recognize(
-                    currentPhoto,
-                    'spa',
-                    { logger: function(m) { console.log(m); } }
-                );
+                // Convertir imagen a base64 sin el prefijo
+                const base64Image = currentPhoto.split(',')[1];
                 
-                const text = result.data.text;
-                console.log('Texto detectado:', text);
+                // Llamar a Gemini AI
+                const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + GEMINI_API_KEY, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [
+                                {
+                                    text: 'Analiza esta factura y extrae los siguientes datos en formato JSON. Si no encuentras algún dato, usa null. Responde SOLO con el JSON, sin texto adicional:\n{\n  "total": "importe total a pagar (solo número con punto decimal, ejemplo: 29.04)",\n  "fecha": "fecha en formato dd/mm/yyyy",\n  "comercio": "nombre del comercio o proveedor",\n  "concepto": "descripción breve del producto o servicio"\n}'
+                                },
+                                {
+                                    inline_data: {
+                                        mime_type: 'image/jpeg',
+                                        data: base64Image
+                                    }
+                                }
+                            ]
+                        }]
+                    })
+                });
                 
-                // EXTRAER DATOS INTELIGENTEMENTE
-                let datosDetectados = [];
+                const data = await response.json();
+                console.log('Respuesta Gemini:', data);
                 
-                // 1. Buscar TOTAL
-                const totalMatch = text.match(/total[:\s]*(\d+[.,]\d{2})\s*€?/i);
-                if (totalMatch) {
-                    const amount = totalMatch[1].replace(',', '.');
-                    document.getElementById('importe').value = amount;
-                    datosDetectados.push('Total: ' + amount + '€');
-                }
-                
-                // 2. Buscar FECHA (varios formatos)
-                const fechaMatch = text.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
-                if (fechaMatch) {
-                    const dia = fechaMatch[1].padStart(2, '0');
-                    const mes = fechaMatch[2].padStart(2, '0');
-                    let año = fechaMatch[3];
-                    if (año.length === 2) año = '20' + año;
+                if (data.candidates && data.candidates[0].content) {
+                    const textoRespuesta = data.candidates[0].content.parts[0].text;
+                    console.log('Texto extraído:', textoRespuesta);
                     
-                    // Si está en modo manual, rellenar directamente
-                    if (modoManual) {
-                        fechaManual.value = dia + '/' + mes + '/' + año;
-                    } else {
-                        // Si está en modo calendario, convertir
-                        fechaCalendario.value = año + '-' + mes + '-' + dia;
+                    // Limpiar la respuesta (quitar markdown si existe)
+                    let jsonText = textoRespuesta.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+                    
+                    try {
+                        const datosFactura = JSON.parse(jsonText);
+                        let datosDetectados = [];
+                        
+                        // Rellenar importe
+                        if (datosFactura.total) {
+                            document.getElementById('importe').value = datosFactura.total;
+                            datosDetectados.push('💰 Total: ' + datosFactura.total + '€');
+                        }
+                        
+                        // Rellenar fecha
+                        if (datosFactura.fecha) {
+                            if (modoManual) {
+                                fechaManual.value = datosFactura.fecha;
+                            } else {
+                                // Convertir dd/mm/yyyy a yyyy-mm-dd
+                                const partes = datosFactura.fecha.split('/');
+                                if (partes.length === 3) {
+                                    fechaCalendario.value = partes[2] + '-' + partes[1] + '-' + partes[0];
+                                }
+                            }
+                            datosDetectados.push('📅 Fecha: ' + datosFactura.fecha);
+                        }
+                        
+                        // Rellenar concepto (usar comercio + concepto)
+                        let conceptoCompleto = '';
+                        if (datosFactura.comercio) {
+                            conceptoCompleto = datosFactura.comercio;
+                            datosDetectados.push('🏪 Comercio: ' + datosFactura.comercio);
+                        }
+                        if (datosFactura.concepto && datosFactura.concepto !== datosFactura.comercio) {
+                            if (conceptoCompleto) conceptoCompleto += ' - ';
+                            conceptoCompleto += datosFactura.concepto;
+                        }
+                        if (conceptoCompleto) {
+                            document.getElementById('concepto').value = conceptoCompleto;
+                        }
+                        
+                        if (datosDetectados.length > 0) {
+                            alert('✅ Datos detectados con IA:\n\n' + datosDetectados.join('\n') + '\n\n⚠️ Revisa que todo sea correcto antes de guardar.');
+                        } else {
+                            alert('⚠️ No se pudieron detectar datos. Introdúcelos manualmente.');
+                        }
+                        
+                    } catch (parseError) {
+                        console.error('Error al parsear JSON:', parseError);
+                        alert('⚠️ Error al procesar la respuesta de la IA. Introduce los datos manualmente.');
                     }
-                    datosDetectados.push('Fecha: ' + dia + '/' + mes + '/' + año);
-                }
-                
-                // 3. Buscar NOMBRE DEL COMERCIO (primeras líneas)
-                const lineas = text.split('\n').filter(function(l) { return l.trim().length > 0; });
-                let comercio = '';
-                for (let i = 0; i < Math.min(5, lineas.length); i++) {
-                    const linea = lineas[i].trim();
-                    // Ignorar si es solo números o muy corto
-                    if (linea.length > 3 && linea.length < 60 && /[a-zA-Z]/.test(linea)) {
-                        comercio = linea;
-                        break;
-                    }
-                }
-                if (comercio && !document.getElementById('concepto').value) {
-                    document.getElementById('concepto').value = comercio;
-                    datosDetectados.push('Comercio detectado');
-                }
-                
-                // 4. MENSAJE FINAL
-                if (datosDetectados.length > 0) {
-                    alert('✅ Datos detectados:\n' + datosDetectados.join('\n') + '\n\n⚠️ Revisa que todo sea correcto antes de guardar.');
                 } else {
-                    alert('⚠️ No se pudieron detectar datos automáticamente. Introdúcelos manualmente.');
+                    alert('❌ No se pudo analizar la factura. Introduce los datos manualmente.');
                 }
                 
             } catch (error) {
-                console.error('Error en OCR:', error);
-                alert('❌ Error al procesar la imagen. Introduce los datos manualmente.');
+                console.error('Error al procesar con Gemini:', error);
+                alert('❌ Error al conectar con la IA. Verifica tu conexión e intenta de nuevo.');
             }
         };
         reader.readAsDataURL(file);
@@ -213,7 +243,7 @@ form.addEventListener('submit', function(e) {
     form.reset();
     photoPreview.style.display = 'none';
     currentPhoto = null;
-    toggleGarantiaPersonalizada(); // Ocultar campo personalizado
+    toggleGarantiaPersonalizada();
     
     renderInvoices();
     alert('✅ Factura guardada correctamente');
