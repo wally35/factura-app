@@ -10,7 +10,7 @@ const form = document.getElementById('invoice-form');
 const invoiceList = document.getElementById('invoice-list');
 const count = document.getElementById('count');
 const fechaInput = document.getElementById('fecha');
-const calendarioInput = document.getElementById('fecha-calendar');
+
 
 // Auto-formato de fecha mejorado
 fechaInput.addEventListener('input', (e) => {
@@ -31,12 +31,7 @@ fechaInput.addEventListener('input', (e) => {
 });
 
 
-// Cuando se selecciona fecha del calendario
-calendarioInput.addEventListener('change', (e) => {
-    const fecha = new Date(e.target.value);
-    const dia = String(fecha.getDate()).padStart(2, '0');
-    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
-    const año = fecha.getFullYear();
+
     fechaInput.value = `${dia}/${mes}/${año}`;
 });
 
