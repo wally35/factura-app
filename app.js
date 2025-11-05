@@ -93,4 +93,84 @@ async function procesarFoto(file) {
                 }
             } catch (error) {
                 console.error('Error en OCR:', error);
-                alert('❌ Error al procesar la imagen.'
+                alert('❌ Error al procesar la imagen.');
+            }
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+// Guardar factura
+form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    
+    const invoice = {
+        id: Date.now(),
+        fecha: document.getElementById('fecha').value,
+        importe: parseFloat(document.getElementById('importe').value),
+        concepto: document.getElementById('concepto').value,
+        categoria: document.getElementById('categoria').value,
+        photo: currentPhoto,
+        timestamp: new Date().toISOString()
+    };
+    
+    invoices.unshift(invoice);
+    localStorage.setItem('invoices', JSON.stringify(invoices));
+    
+    form.reset();
+    photoPreview.style.display = 'none';
+    currentPhoto = null;
+    
+    renderInvoices();
+    alert('✅ Factura guardada correctamente');
+});
+
+// Mostrar facturas
+function renderInvoices() {
+    count.textContent = invoices.length;
+    
+    if (invoices.length === 0) {
+        invoiceList.innerHTML = '<div class="empty-state">No hay facturas guardadas.<br>¡Añade tu primera factura!</div>';
+        return;
+    }
+    
+    invoiceList.innerHTML = invoices.map(invoice => `
+        <div class="invoice-item">
+            <div class="invoice-header">
+                <div>
+                    <div class="invoice-amount">${invoice.importe.toFixed(2)}€</div>
+                    <div class="invoice-details">
+                        ${getCategoryEmoji(invoice.categoria)} ${invoice.categoria || 'Sin categoría'} • ${invoice.fecha}
+                    </div>
+                </div>
+                <button class="btn-delete" onclick="deleteInvoice(${invoice.id})">🗑️</button>
+            </div>
+            <div><strong>${invoice.concepto}</strong></div>
+            ${invoice.photo ? `<img src="${invoice.photo}" alt="Factura">` : ''}
+        </div>
+    `).join('');
+}
+
+// Eliminar factura
+function deleteInvoice(id) {
+    if (confirm('¿Eliminar esta factura?')) {
+        invoices = invoices.filter(inv => inv.id !== id);
+        localStorage.setItem('invoices', JSON.stringify(invoices));
+        renderInvoices();
+    }
+}
+
+// Utilidades
+function getCategoryEmoji(category) {
+    const emojis = {
+        'electrodomesticos': '⚡',
+        'alimentacion': '🍔',
+        'transporte': '🚗',
+        'suministros': '💡',
+        'otros': '📦'
+    };
+    return emojis[category] || '📄';
+}
+
+// Cargar facturas al inicio
+renderInvoices();
