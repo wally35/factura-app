@@ -19,12 +19,19 @@
             <h2>➕ Nueva Factura</h2>
             
             <div class="camera-section">
-                <input type="file" id="photo-input" accept="image/*">
-                <button class="btn-camera" onclick="document.getElementById('photo-input').click()">
-                    📷 Tomar Foto
-                </button>
-                <img id="photo-preview" style="display:none;">
-            </div>
+    <input type="file" id="photo-camera" accept="image/*" capture="environment" style="display:none;">
+    <input type="file" id="photo-gallery" accept="image/*" style="display:none;">
+    
+    <button class="btn-camera" onclick="document.getElementById('photo-camera').click()">
+        📷 Tomar Foto
+    </button>
+    
+    <button class="btn-gallery" onclick="document.getElementById('photo-gallery').click()">
+        🖼️ Subir desde Galería
+    </button>
+    
+    <img id="photo-preview" style="display:none;">
+</div>
 
             <form id="invoice-form">
                 <input type="date" id="fecha" required placeholder="Fecha">
