@@ -149,43 +149,142 @@ async function procesarFoto(file) {
                     datosDetectados.push('💰 Total: ' + importeMax + '€');
                 }
                 
-                // 2. Detectar FECHA (varios formatos)
-                const regexFecha = /\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})\b/g;
-                const matchFecha = text.match(regexFecha);
-                if (matchFecha && matchFecha.length > 0) {
-                    // Tomar la primera fecha encontrada
-                    const fecha = matchFecha[0];
-                    const partes = fecha.split(/[\/\-.]/);
-                    let dia = partes[0].padStart(2, '0');
-                    let mes = partes[1].padStart(2, '0');
-                    let año = partes[2];
+                // 2. Detectar FECHA (varios formatos y mejor búsqueda)
+                let fechaDetectada = null;
+                
+                // Patrones de fecha más flexibles
+                const patronesFecha = [
+                    // DD/MM/YYYY o DD-MM-YYYY o DD.MM.YYYY
+                    /\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})\b/g,
+                    // DD/MM/YY o DD-MM-YY
+                    /\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2})\b/g,
+                    // YYYY/MM/DD o YYYY-MM-DD
+                    /\b(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})\b/g
+                ];
+                
+                // Buscar fecha cerca de palabras clave
+                const lineasFecha = text.split('\n');
+                for (let i = 0; i < lineasFecha.length; i++) {
+                    const linea = lineasFecha[i].toLowerCase();
                     
-                    // Si el año es de 2 dígitos, convertir a 4
-                    if (año.length === 2) {
-                        año = '20' + año;
+                    // Si la línea contiene palabras relacionadas con fecha
+                    if (linea.match(/fecha|date|emitida|emision|compra/i)) {
+                        // Buscar fecha en esta línea y las 2 siguientes
+                        const contexto = lineasFecha.slice(i, i + 3).join(' ');
+                        
+                        for (const patron of patronesFecha) {
+                            const match = contexto.match(patron);
+                            if (match) {
+                                fechaDetectada = match[0];
+                                break;
+                            }
+                        }
+                        if (fechaDetectada) break;
                     }
-                    
-                    const fechaFormateada = dia + '/' + mes + '/' + año;
-                    
-                    if (modoManual) {
-                        fechaManual.value = fechaFormateada;
-                    } else {
-                        fechaCalendario.value = año + '-' + mes + '-' + dia;
-                    }
-                    datosDetectados.push('📅 Fecha: ' + fechaFormateada);
                 }
                 
-                // 3. Detectar COMERCIO (buscar nombres comunes o NIF)
+                // Si no encontró fecha cerca de palabras clave, buscar cualquier fecha
+                if (!fechaDetectada) {
+                    for (const patron of patronesFecha) {
+                        const match = text.match(patron);
+                        if (match) {
+                            fechaDetectada = match[0];
+                            break;
+                        }
+                    }
+                }
+                
+                // Procesar la fecha detectada
+                if (fechaDetectada) {
+                    let dia, mes, año;
+                    const separador = fechaDetectada.match(/[\/\-.]/)[0];
+                    const partes = fechaDetectada.split(separador);
+                    
+                    // Determinar formato (DD/MM/YYYY o YYYY/MM/DD)
+                    if (partes[0].length === 4) {
+                        // Formato YYYY/MM/DD
+                        año = partes[0];
+                        mes = partes[1].padStart(2, '0');
+                        dia = partes[2].padStart(2, '0');
+                    } else {
+                        // Formato DD/MM/YYYY o DD/MM/YY
+                        dia = partes[0].padStart(2, '0');
+                        mes = partes[1].padStart(2, '0');
+                        año = partes[2];
+                        
+                        // Si el año es de 2 dígitos, convertir a 4
+                        if (año.length === 2) {
+                            const añoNum = parseInt(año);
+                            // Si es mayor a 50, es 19XX, si no es 20XX
+                            año = añoNum > 50 ? '19' + año : '20' + año;
+                        }
+                    }
+                    
+                    // Validar que sea una fecha razonable (no en el futuro lejano, no muy antigua)
+                    const fechaObj = new Date(año + '-' + mes + '-' + dia);
+                    const hoy = new Date();
+                    const hace10años = new Date();
+                    hace10años.setFullYear(hoy.getFullYear() - 10);
+                    
+                    if (fechaObj >= hace10años && fechaObj <= hoy) {
+                        const fechaFormateada = dia + '/' + mes + '/' + año;
+                        
+                        if (modoManual) {
+                            fechaManual.value = fechaFormateada;
+                        } else {
+                            fechaCalendario.value = año + '-' + mes + '-' + dia;
+                        }
+                        datosDetectados.push('📅 Fecha: ' + fechaFormateada);
+                    }
+                }
+                
+                // 3. Detectar COMERCIO (buscar nombres comunes o en las primeras líneas)
                 const lineas = text.split('\n').filter(l => l.trim().length > 0);
                 let posibleComercio = '';
                 
-                // Buscar líneas con palabras clave de comercio
-                for (let i = 0; i < Math.min(lineas.length, 5); i++) {
+                // Palabras que suelen indicar que NO es un comercio
+                const palabrasExcluir = /factura|invoice|ticket|recibo|fecha|date|total|importe|precio|price|nif|cif|iva|tax|cantidad|amount|descripcion|description|pagado|paid/i;
+                
+                // Buscar en las primeras 10 líneas
+                for (let i = 0; i < Math.min(lineas.length, 10); i++) {
                     const linea = lineas[i].trim();
-                    if (linea.length > 3 && linea.length < 50 && 
-                        !linea.match(/factura|invoice|ticket|fecha|date|total/i)) {
-                        posibleComercio = linea;
-                        break;
+                    
+                    // Debe tener longitud razonable y no contener palabras a excluir
+                    if (linea.length >= 3 && 
+                        linea.length <= 60 && 
+                        !palabrasExcluir.test(linea) &&
+                        !linea.match(/^[\d\s\.,\/\-€$]+$/) && // No solo números/símbolos
+                        !linea.match(/^\d/) && // No empieza con número
+                        linea.match(/[a-zA-Z]/) // Contiene letras
+                    ) {
+                        // Limpiar la línea
+                        posibleComercio = linea
+                            .replace(/\s+/g, ' ') // Normalizar espacios
+                            .replace(/[•\*\-]\s*/g, '') // Quitar viñetas
+                            .trim();
+                        
+                        // Si tiene longitud razonable, usar este
+                        if (posibleComercio.length >= 3 && posibleComercio.length <= 50) {
+                            break;
+                        }
+                    }
+                }
+                
+                // También buscar cerca de palabras clave
+                if (!posibleComercio) {
+                    for (let i = 0; i < lineas.length; i++) {
+                        const linea = lineas[i].toLowerCase();
+                        if (linea.match(/comercio|tienda|empresa|proveedor|vendedor|merchant|store|company/i)) {
+                            // Buscar en la línea siguiente
+                            if (i + 1 < lineas.length) {
+                                const siguienteLinea = lineas[i + 1].trim();
+                                if (siguienteLinea.length >= 3 && siguienteLinea.length <= 50 && 
+                                    !palabrasExcluir.test(siguienteLinea)) {
+                                    posibleComercio = siguienteLinea;
+                                    break;
+                                }
+                            }
+                        }
                     }
                 }
                 
