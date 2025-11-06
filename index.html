@@ -3,77 +3,93 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#4CAF50">
-    <title>📄 Mis Facturas</title>
+    <title>Gestor de Facturas</title>
     <link rel="stylesheet" href="style.css">
+    <!-- Cargar Tesseract.js desde CDN -->
+    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>📄 Mis Facturas</h1>
-            <p class="subtitle">Organiza tus facturas fácilmente</p>
+            <h1>📱 Gestor de Facturas</h1>
+            <div class="count-badge">
+                <span id="count">0</span> facturas
+            </div>
         </header>
 
-        <div class="add-section">
-            <h2>➕ Nueva Factura</h2>
-            
-            <div class="camera-section">
-                <input type="file" id="photo-camera" accept="image/*" capture="environment" style="display:none;">
-                <input type="file" id="photo-gallery" accept="image/*" style="display:none;">
-                
-                <button class="btn-camera" onclick="document.getElementById('photo-camera').click()">
-                    📷 Tomar Foto
-                </button>
-                
-                <button class="btn-gallery" onclick="document.getElementById('photo-gallery').click()">
-                    🖼️ Subir desde Galería
-                </button>
-                
-                <img id="photo-preview" style="display:none;">
+        <section class="photo-section">
+            <h2>Añadir Factura</h2>
+            <div class="photo-buttons">
+                <label for="photo-camera" class="btn btn-primary">
+                    📷 Cámara
+                    <input type="file" id="photo-camera" accept="image/*" capture="environment" style="display: none;">
+                </label>
+                <label for="photo-gallery" class="btn btn-secondary">
+                    🖼️ Galería
+                    <input type="file" id="photo-gallery" accept="image/*" style="display: none;">
+                </label>
+            </div>
+            <img id="photo-preview" alt="Vista previa" style="display: none;">
+        </section>
+
+        <form id="invoice-form">
+            <div class="form-group">
+                <label>📅 Fecha de compra</label>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <input type="date" id="fecha-calendario" required style="flex: 1;">
+                    <input type="text" id="fecha-manual" placeholder="DD/MM/AAAA" maxlength="10" style="flex: 1; display: none;">
+                    <button type="button" id="toggle-fecha" class="btn-icon" title="Cambiar modo de fecha">✏️</button>
+                </div>
             </div>
 
-            <form id="invoice-form">
-                <div style="display: flex; gap: 10px; align-items: center;">
-                    <input type="date" id="fecha-calendario" style="width: 100%; padding: 15px; font-size: 1em; border: 2px solid #ddd; border-radius: 10px;">
-                    <input type="text" id="fecha-manual" placeholder="dd/mm/aaaa" maxlength="10" style="width: 100%; padding: 15px; font-size: 1em; border: 2px solid #ddd; border-radius: 10px; display: none;">
-                    <button type="button" id="toggle-fecha" 
-                            style="padding: 15px 20px; background: #667eea; color: white; border: none; border-radius: 10px; cursor: pointer; font-size: 1.2em; white-space: nowrap;">
-                        ✏️
-                    </button>
-                </div>
-                <input type="number" id="importe" step="0.01" required placeholder="Importe (€)">
-                <input type="text" id="concepto" required placeholder="Concepto / Producto">
-                
-                <select id="garantia-tipo" onchange="toggleGarantiaPersonalizada()">
-                    <option value="">Sin garantía</option>
-                    <option value="1">1 año de garantía</option>
-                    <option value="2">2 años de garantía</option>
-                    <option value="3" selected>3 años de garantía (España)</option>
-                    <option value="5">5 años de garantía</option>
-                    <option value="custom">Fecha personalizada</option>
-                </select>
-                
-                <input type="date" id="garantia-custom" placeholder="Garantía hasta" style="display: none;">
-                
-                <select id="categoria">
-                    <option value="">Seleccionar categoría</option>
+            <div class="form-group">
+                <label for="importe">💰 Importe</label>
+                <input type="number" id="importe" step="0.01" min="0" required placeholder="0.00">
+            </div>
+
+            <div class="form-group">
+                <label for="concepto">📝 Concepto</label>
+                <input type="text" id="concepto" required placeholder="Describe la compra">
+            </div>
+
+            <div class="form-group">
+                <label for="categoria">📦 Categoría</label>
+                <select id="categoria" required>
+                    <option value="">Selecciona una categoría</option>
                     <option value="electrodomesticos">⚡ Electrodomésticos</option>
                     <option value="alimentacion">🍔 Alimentación</option>
                     <option value="transporte">🚗 Transporte</option>
                     <option value="suministros">💡 Suministros</option>
                     <option value="otros">📦 Otros</option>
                 </select>
-                <button type="submit" class="btn-save">💾 Guardar Factura</button>
-            </form>
-        </div>
+            </div>
 
-        <div class="list-section">
-            <h2>📋 Mis Facturas (<span id="count">0</span>)</h2>
+            <div class="form-group">
+                <label for="garantia-tipo">⏰ Garantía</label>
+                <select id="garantia-tipo" onchange="toggleGarantiaPersonalizada()">
+                    <option value="">Sin garantía</option>
+                    <option value="1">1 año</option>
+                    <option value="2">2 años</option>
+                    <option value="3">3 años</option>
+                    <option value="5">5 años</option>
+                    <option value="custom">Personalizada</option>
+                </select>
+            </div>
+
+            <div class="form-group" id="garantia-custom" style="display: none;">
+                <label for="garantia-custom-date">Fecha fin de garantía</label>
+                <input type="date" id="garantia-custom">
+            </div>
+
+            <button type="submit" class="btn btn-success">💾 Guardar Factura</button>
+        </form>
+
+        <section class="invoices-section">
+            <h2>Mis Facturas</h2>
             <div id="invoice-list"></div>
-        </div>
+        </section>
     </div>
 
-    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
     <script src="app.js"></script>
 </body>
 </html>
