@@ -82,7 +82,7 @@ photoGallery.addEventListener('change', async function(e) {
     await procesarFoto(e.target.files[0]);
 });
 
-// Función para procesar foto con Gemini AI (versión gratuita)
+// Función para procesar foto con Tesseract OCR (100% gratis, sin APIs)
 async function procesarFoto(file) {
     if (file) {
         const reader = new FileReader();
@@ -93,145 +93,128 @@ async function procesarFoto(file) {
             
             // Mostrar mensaje de análisis
             const mensaje = document.createElement('div');
-            mensaje.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); color: white; padding: 20px 30px; border-radius: 10px; z-index: 10000; text-align: center;';
-            mensaje.innerHTML = '🤖 Analizando factura con IA...<br><small>Esto puede tardar unos segundos</small>';
+            mensaje.id = 'loading-ocr';
+            mensaje.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); color: white; padding: 20px 30px; border-radius: 10px; z-index: 10000; text-align: center; min-width: 250px;';
+            mensaje.innerHTML = '🔍 Analizando factura...<br><small>Esto puede tardar unos segundos</small><br><div style="margin-top: 10px; font-size: 12px;" id="progress-text">0%</div>';
             document.body.appendChild(mensaje);
             
             try {
-                // Convertir imagen a base64 sin el prefijo
-                const base64Image = currentPhoto.split(',')[1];
-                
-                // Llamar a Gemini AI con mejor prompt
-                // Nota: La API key debe configurarse como secreto en GitHub
-                const GEMINI_API_KEY = window.GEMINI_API_KEY || 'TU_API_KEY_AQUI';
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        contents: [{
-                            parts: [
-                                {
-                                    text: 'Eres un experto en análisis de facturas. Analiza esta imagen y extrae SOLO estos datos exactos en formato JSON puro (sin markdown, sin explicaciones):\n\n{\n  "total": "número del importe total sin símbolo de euro (ej: 29.04)",\n  "fecha": "fecha en formato DD/MM/YYYY (ej: 05/11/2025)",\n  "comercio": "nombre del comercio o empresa emisora",\n  "concepto": "descripción breve del producto o servicio"\n}\n\nSi no encuentras algún dato, usa null. Responde ÚNICAMENTE con el JSON, nada más.'
-                                },
-                                {
-                                    inline_data: {
-                                        mime_type: 'image/jpeg',
-                                        data: base64Image
-                                    }
-                                }
-                            ]
-                        }],
-                        generationConfig: {
-                            temperature: 0.1,
-                            topK: 32,
-                            topP: 1,
-                            maxOutputTokens: 500,
+                // Usar Tesseract.js para OCR con mejor configuración
+                const worker = await Tesseract.createWorker('spa', 1, {
+                    logger: m => {
+                        const progressElement = document.getElementById('progress-text');
+                        if (progressElement) {
+                            if (m.status === 'loading tesseract core') {
+                                progressElement.textContent = 'Cargando OCR...';
+                            } else if (m.status === 'initializing tesseract') {
+                                progressElement.textContent = 'Inicializando...';
+                            } else if (m.status === 'loading language traineddata') {
+                                progressElement.textContent = 'Cargando idioma... ' + Math.round(m.progress * 100) + '%';
+                            } else if (m.status === 'initializing api') {
+                                progressElement.textContent = 'Preparando...';
+                            } else if (m.status === 'recognizing text') {
+                                progressElement.textContent = 'Analizando texto... ' + Math.round(m.progress * 100) + '%';
+                            }
                         }
-                    })
+                    },
+                    errorHandler: err => console.error('Error en Tesseract:', err)
                 });
                 
-                // Quitar mensaje de carga
-                document.body.removeChild(mensaje);
+                const { data: { text } } = await worker.recognize(currentPhoto);
+                await worker.terminate();
                 
-                if (!response.ok) {
-                    throw new Error(`Error HTTP: ${response.status}`);
+                console.log('Texto detectado:', text);
+                
+                // Quitar mensaje de carga
+                const loadingMsg = document.getElementById('loading-ocr');
+                if (loadingMsg) {
+                    document.body.removeChild(loadingMsg);
                 }
                 
-                const data = await response.json();
-                console.log('Respuesta completa de Gemini:', data);
+                // Procesar el texto extraído
+                let datosDetectados = [];
                 
-                if (data.candidates && data.candidates[0].content && data.candidates[0].content.parts) {
-                    const textoRespuesta = data.candidates[0].content.parts[0].text;
-                    console.log('Texto extraído:', textoRespuesta);
+                // 1. Detectar IMPORTE (buscar patrones de precio)
+                const regexImporte = /(?:total|importe|amount|precio|price|pagar|pay)[\s:]*[€$]?\s*(\d{1,6}[.,]\d{2})|(\d{1,6}[.,]\d{2})\s*[€$]/gi;
+                const matchesImporte = text.matchAll(regexImporte);
+                let importes = [];
+                for (const match of matchesImporte) {
+                    const importe = (match[1] || match[2]).replace(',', '.');
+                    importes.push(parseFloat(importe));
+                }
+                // Usar el importe más alto encontrado
+                if (importes.length > 0) {
+                    const importeMax = Math.max(...importes).toFixed(2);
+                    document.getElementById('importe').value = importeMax;
+                    datosDetectados.push('💰 Total: ' + importeMax + '€');
+                }
+                
+                // 2. Detectar FECHA (varios formatos)
+                const regexFecha = /\b(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})\b/g;
+                const matchFecha = text.match(regexFecha);
+                if (matchFecha && matchFecha.length > 0) {
+                    // Tomar la primera fecha encontrada
+                    const fecha = matchFecha[0];
+                    const partes = fecha.split(/[\/\-.]/);
+                    let dia = partes[0].padStart(2, '0');
+                    let mes = partes[1].padStart(2, '0');
+                    let año = partes[2];
                     
-                    // Limpiar la respuesta (quitar markdown y espacios)
-                    let jsonText = textoRespuesta
-                        .replace(/```json\n?/g, '')
-                        .replace(/```\n?/g, '')
-                        .replace(/^\s*\n/gm, '')
-                        .trim();
-                    
-                    // Si empieza con texto, buscar el JSON
-                    const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
-                    if (jsonMatch) {
-                        jsonText = jsonMatch[0];
+                    // Si el año es de 2 dígitos, convertir a 4
+                    if (año.length === 2) {
+                        año = '20' + año;
                     }
                     
-                    console.log('JSON limpio:', jsonText);
+                    const fechaFormateada = dia + '/' + mes + '/' + año;
                     
-                    try {
-                        const datosFactura = JSON.parse(jsonText);
-                        let datosDetectados = [];
-                        
-                        // Rellenar importe
-                        if (datosFactura.total && datosFactura.total !== null) {
-                            const importeNumerico = String(datosFactura.total).replace(',', '.');
-                            document.getElementById('importe').value = importeNumerico;
-                            datosDetectados.push('💰 Total: ' + importeNumerico + '€');
-                        }
-                        
-                        // Rellenar fecha
-                        if (datosFactura.fecha && datosFactura.fecha !== null) {
-                            if (modoManual) {
-                                fechaManual.value = datosFactura.fecha;
-                            } else {
-                                // Convertir dd/mm/yyyy a yyyy-mm-dd
-                                const partes = datosFactura.fecha.split('/');
-                                if (partes.length === 3) {
-                                    const fechaISO = `${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`;
-                                    fechaCalendario.value = fechaISO;
-                                }
-                            }
-                            datosDetectados.push('📅 Fecha: ' + datosFactura.fecha);
-                        }
-                        
-                        // Rellenar concepto (usar comercio + concepto)
-                        let conceptoCompleto = '';
-                        if (datosFactura.comercio && datosFactura.comercio !== null) {
-                            conceptoCompleto = datosFactura.comercio;
-                            datosDetectados.push('🏪 Comercio: ' + datosFactura.comercio);
-                        }
-                        if (datosFactura.concepto && datosFactura.concepto !== null && datosFactura.concepto !== datosFactura.comercio) {
-                            if (conceptoCompleto) conceptoCompleto += ' - ';
-                            conceptoCompleto += datosFactura.concepto;
-                        }
-                        if (conceptoCompleto) {
-                            document.getElementById('concepto').value = conceptoCompleto;
-                        }
-                        
-                        if (datosDetectados.length > 0) {
-                            alert('✅ Datos detectados con IA:\n\n' + datosDetectados.join('\n') + '\n\n⚠️ Revisa que todo sea correcto antes de guardar.');
-                        } else {
-                            alert('⚠️ No se pudieron detectar datos automáticamente.\nPuedes introducirlos manualmente.');
-                        }
-                        
-                    } catch (parseError) {
-                        console.error('Error al parsear JSON:', parseError);
-                        console.error('Texto recibido:', jsonText);
-                        alert('⚠️ La IA no pudo extraer los datos en el formato esperado.\nIntroduce los datos manualmente.');
+                    if (modoManual) {
+                        fechaManual.value = fechaFormateada;
+                    } else {
+                        fechaCalendario.value = año + '-' + mes + '-' + dia;
                     }
+                    datosDetectados.push('📅 Fecha: ' + fechaFormateada);
+                }
+                
+                // 3. Detectar COMERCIO (buscar nombres comunes o NIF)
+                const lineas = text.split('\n').filter(l => l.trim().length > 0);
+                let posibleComercio = '';
+                
+                // Buscar líneas con palabras clave de comercio
+                for (let i = 0; i < Math.min(lineas.length, 5); i++) {
+                    const linea = lineas[i].trim();
+                    if (linea.length > 3 && linea.length < 50 && 
+                        !linea.match(/factura|invoice|ticket|fecha|date|total/i)) {
+                        posibleComercio = linea;
+                        break;
+                    }
+                }
+                
+                if (posibleComercio) {
+                    document.getElementById('concepto').value = posibleComercio;
+                    datosDetectados.push('🏪 Comercio: ' + posibleComercio);
+                }
+                
+                // Mostrar resultados
+                if (datosDetectados.length > 0) {
+                    alert('✅ Datos detectados:\n\n' + datosDetectados.join('\n') + '\n\n⚠️ Revisa que todo sea correcto antes de guardar.');
                 } else {
-                    console.error('Respuesta inesperada:', data);
-                    alert('❌ No se pudo analizar la factura.\nIntroduce los datos manualmente.');
+                    alert('⚠️ No se pudieron detectar datos automáticamente.\nPuedes introducirlos manualmente.');
                 }
                 
             } catch (error) {
-                // Quitar mensaje de carga si aún está
-                const mensajeExistente = document.querySelector('div[style*="position: fixed"]');
-                if (mensajeExistente) {
-                    document.body.removeChild(mensajeExistente);
+                console.error('Error en OCR:', error);
+                const loadingMsg = document.getElementById('loading-ocr');
+                if (loadingMsg) {
+                    document.body.removeChild(loadingMsg);
                 }
                 
-                console.error('Error completo al procesar con Gemini:', error);
-                
-                if (error.message.includes('429')) {
-                    alert('⚠️ Límite de solicitudes excedido.\nEspera unos minutos e intenta de nuevo, o introduce los datos manualmente.');
-                } else if (error.message.includes('403')) {
-                    alert('⚠️ Problema con la API key de Gemini.\nIntroduce los datos manualmente por ahora.');
+                // Mensajes de error más específicos
+                if (error.message && error.message.includes('network')) {
+                    alert('❌ Error de conexión.\n\nTesseract necesita descargar archivos la primera vez.\nVerifica tu conexión a internet e intenta de nuevo.\n\nPor ahora, introduce los datos manualmente.');
+                } else if (error.message && error.message.includes('timeout')) {
+                    alert('⏱️ Tiempo de espera agotado.\n\nLa conexión está muy lenta.\nIntroduce los datos manualmente.');
                 } else {
-                    alert('❌ Error al conectar con la IA.\nVerifica tu conexión e intenta de nuevo, o introduce los datos manualmente.');
+                    alert('❌ Error al analizar la imagen.\n\nPuede ser que:\n• La imagen esté borrosa\n• No haya texto legible\n• Problemas de conexión\n\nIntroduce los datos manualmente.');
                 }
             }
         };
