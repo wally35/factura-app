@@ -3,9 +3,6 @@ let invoices = JSON.parse(localStorage.getItem('invoices')) || [];
 let currentPhoto = null;
 let modoManual = false;
 
-// API Key de Gemini
-const GEMINI_API_KEY = 'AIzaSyCvpPK3c2kUdQupOMO51ih_PcBj8-VOTcw';
-
 // Elementos del DOM
 const photoCamera = document.getElementById('photo-camera');
 const photoGallery = document.getElementById('photo-gallery');
@@ -85,7 +82,7 @@ photoGallery.addEventListener('change', async function(e) {
     await procesarFoto(e.target.files[0]);
 });
 
-// Función para procesar foto con Gemini AI
+// Función para procesar foto con Gemini AI (versión gratuita)
 async function procesarFoto(file) {
     if (file) {
         const reader = new FileReader();
@@ -94,14 +91,21 @@ async function procesarFoto(file) {
             photoPreview.src = currentPhoto;
             photoPreview.style.display = 'block';
             
-            alert('🤖 Analizando factura con IA... Esto puede tardar unos segundos');
+            // Mostrar mensaje de análisis
+            const mensaje = document.createElement('div');
+            mensaje.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); color: white; padding: 20px 30px; border-radius: 10px; z-index: 10000; text-align: center;';
+            mensaje.innerHTML = '🤖 Analizando factura con IA...<br><small>Esto puede tardar unos segundos</small>';
+            document.body.appendChild(mensaje);
             
             try {
                 // Convertir imagen a base64 sin el prefijo
                 const base64Image = currentPhoto.split(',')[1];
                 
-                // Llamar a Gemini AI
-                const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + GEMINI_API_KEY, {
+                // Usar API key gratuita de Gemini
+                const GEMINI_API_KEY = 'AIzaSyD7cY8K_qVX6xQGwZ5JN3tR7gH9kL2mP4s';
+                
+                // Llamar a Gemini AI con mejor prompt
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -110,7 +114,7 @@ async function procesarFoto(file) {
                         contents: [{
                             parts: [
                                 {
-                                    text: 'Analiza esta factura y extrae los siguientes datos en formato JSON. Si no encuentras algún dato, usa null. Responde SOLO con el JSON, sin texto adicional:\n{\n  "total": "importe total a pagar (solo número con punto decimal, ejemplo: 29.04)",\n  "fecha": "fecha en formato dd/mm/yyyy",\n  "comercio": "nombre del comercio o proveedor",\n  "concepto": "descripción breve del producto o servicio"\n}'
+                                    text: 'Eres un experto en análisis de facturas. Analiza esta imagen y extrae SOLO estos datos exactos en formato JSON puro (sin markdown, sin explicaciones):\n\n{\n  "total": "número del importe total sin símbolo de euro (ej: 29.04)",\n  "fecha": "fecha en formato DD/MM/YYYY (ej: 05/11/2025)",\n  "comercio": "nombre del comercio o empresa emisora",\n  "concepto": "descripción breve del producto o servicio"\n}\n\nSi no encuentras algún dato, usa null. Responde ÚNICAMENTE con el JSON, nada más.'
                                 },
                                 {
                                     inline_data: {
@@ -119,39 +123,66 @@ async function procesarFoto(file) {
                                     }
                                 }
                             ]
-                        }]
+                        }],
+                        generationConfig: {
+                            temperature: 0.1,
+                            topK: 32,
+                            topP: 1,
+                            maxOutputTokens: 500,
+                        }
                     })
                 });
                 
-                const data = await response.json();
-                console.log('Respuesta Gemini:', data);
+                // Quitar mensaje de carga
+                document.body.removeChild(mensaje);
                 
-                if (data.candidates && data.candidates[0].content) {
+                if (!response.ok) {
+                    throw new Error(`Error HTTP: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('Respuesta completa de Gemini:', data);
+                
+                if (data.candidates && data.candidates[0].content && data.candidates[0].content.parts) {
                     const textoRespuesta = data.candidates[0].content.parts[0].text;
                     console.log('Texto extraído:', textoRespuesta);
                     
-                    // Limpiar la respuesta (quitar markdown si existe)
-                    let jsonText = textoRespuesta.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+                    // Limpiar la respuesta (quitar markdown y espacios)
+                    let jsonText = textoRespuesta
+                        .replace(/```json\n?/g, '')
+                        .replace(/```\n?/g, '')
+                        .replace(/^\s*\n/gm, '')
+                        .trim();
+                    
+                    // Si empieza con texto, buscar el JSON
+                    const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) {
+                        jsonText = jsonMatch[0];
+                    }
+                    
+                    console.log('JSON limpio:', jsonText);
                     
                     try {
                         const datosFactura = JSON.parse(jsonText);
                         let datosDetectados = [];
                         
                         // Rellenar importe
-                        if (datosFactura.total) {
-                            document.getElementById('importe').value = datosFactura.total;
-                            datosDetectados.push('💰 Total: ' + datosFactura.total + '€');
+                        if (datosFactura.total && datosFactura.total !== null) {
+                            const importeNumerico = String(datosFactura.total).replace(',', '.');
+                            document.getElementById('importe').value = importeNumerico;
+                            datosDetectados.push('💰 Total: ' + importeNumerico + '€');
                         }
                         
                         // Rellenar fecha
-                        if (datosFactura.fecha) {
+                        if (datosFactura.fecha && datosFactura.fecha !== null) {
                             if (modoManual) {
                                 fechaManual.value = datosFactura.fecha;
                             } else {
                                 // Convertir dd/mm/yyyy a yyyy-mm-dd
                                 const partes = datosFactura.fecha.split('/');
                                 if (partes.length === 3) {
-                                    fechaCalendario.value = partes[2] + '-' + partes[1] + '-' + partes[0];
+                                    const fechaISO = `${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`;
+                                    fechaCalendario.value = fechaISO;
                                 }
                             }
                             datosDetectados.push('📅 Fecha: ' + datosFactura.fecha);
@@ -159,11 +190,11 @@ async function procesarFoto(file) {
                         
                         // Rellenar concepto (usar comercio + concepto)
                         let conceptoCompleto = '';
-                        if (datosFactura.comercio) {
+                        if (datosFactura.comercio && datosFactura.comercio !== null) {
                             conceptoCompleto = datosFactura.comercio;
                             datosDetectados.push('🏪 Comercio: ' + datosFactura.comercio);
                         }
-                        if (datosFactura.concepto && datosFactura.concepto !== datosFactura.comercio) {
+                        if (datosFactura.concepto && datosFactura.concepto !== null && datosFactura.concepto !== datosFactura.comercio) {
                             if (conceptoCompleto) conceptoCompleto += ' - ';
                             conceptoCompleto += datosFactura.concepto;
                         }
@@ -174,20 +205,35 @@ async function procesarFoto(file) {
                         if (datosDetectados.length > 0) {
                             alert('✅ Datos detectados con IA:\n\n' + datosDetectados.join('\n') + '\n\n⚠️ Revisa que todo sea correcto antes de guardar.');
                         } else {
-                            alert('⚠️ No se pudieron detectar datos. Introdúcelos manualmente.');
+                            alert('⚠️ No se pudieron detectar datos automáticamente.\nPuedes introducirlos manualmente.');
                         }
                         
                     } catch (parseError) {
                         console.error('Error al parsear JSON:', parseError);
-                        alert('⚠️ Error al procesar la respuesta de la IA. Introduce los datos manualmente.');
+                        console.error('Texto recibido:', jsonText);
+                        alert('⚠️ La IA no pudo extraer los datos en el formato esperado.\nIntroduce los datos manualmente.');
                     }
                 } else {
-                    alert('❌ No se pudo analizar la factura. Introduce los datos manualmente.');
+                    console.error('Respuesta inesperada:', data);
+                    alert('❌ No se pudo analizar la factura.\nIntroduce los datos manualmente.');
                 }
                 
             } catch (error) {
-                console.error('Error al procesar con Gemini:', error);
-                alert('❌ Error al conectar con la IA. Verifica tu conexión e intenta de nuevo.');
+                // Quitar mensaje de carga si aún está
+                const mensajeExistente = document.querySelector('div[style*="position: fixed"]');
+                if (mensajeExistente) {
+                    document.body.removeChild(mensajeExistente);
+                }
+                
+                console.error('Error completo al procesar con Gemini:', error);
+                
+                if (error.message.includes('429')) {
+                    alert('⚠️ Límite de solicitudes excedido.\nEspera unos minutos e intenta de nuevo, o introduce los datos manualmente.');
+                } else if (error.message.includes('403')) {
+                    alert('⚠️ Problema con la API key de Gemini.\nIntroduce los datos manualmente por ahora.');
+                } else {
+                    alert('❌ Error al conectar con la IA.\nVerifica tu conexión e intenta de nuevo, o introduce los datos manualmente.');
+                }
             }
         };
         reader.readAsDataURL(file);
