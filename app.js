@@ -72,6 +72,49 @@ function calcularGarantia(fechaCompra, años) {
     return fecha.toISOString().split('T')[0];
 }
 
+// Función para preprocesar y mejorar la imagen antes del OCR
+async function mejorarImagenParaOCR(imagenBase64) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = function() {
+            // Crear canvas con mayor resolución
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Escalar a mayor tamaño para mejor OCR
+            const escala = 2;
+            canvas.width = img.width * escala;
+            canvas.height = img.height * escala;
+            
+            // Dibujar imagen escalada
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            
+            // Obtener datos de la imagen
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            
+            // Convertir a escala de grises y aumentar contraste
+            for (let i = 0; i < data.length; i += 4) {
+                // Convertir a escala de grises
+                const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+                
+                // Aumentar contraste (umbral adaptativo)
+                const contrasteAumentado = gray > 128 ? 255 : 0;
+                
+                data[i] = contrasteAumentado;     // R
+                data[i + 1] = contrasteAumentado; // G
+                data[i + 2] = contrasteAumentado; // B
+            }
+            
+            ctx.putImageData(imageData, 0, 0);
+            
+            // Devolver imagen mejorada como base64
+            resolve(canvas.toDataURL('image/png'));
+        };
+        img.src = imagenBase64;
+    });
+}
+
 // Procesar foto de cámara
 photoCamera.addEventListener('change', async function(e) {
     await procesarFoto(e.target.files[0]);
@@ -95,11 +138,22 @@ async function procesarFoto(file) {
             const mensaje = document.createElement('div');
             mensaje.id = 'loading-ocr';
             mensaje.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); color: white; padding: 20px 30px; border-radius: 10px; z-index: 10000; text-align: center; min-width: 250px;';
-            mensaje.innerHTML = '🔍 Analizando factura...<br><small>Esto puede tardar unos segundos</small><br><div style="margin-top: 10px; font-size: 12px;" id="progress-text">0%</div>';
+            mensaje.innerHTML = '🔍 Mejorando imagen...<br><small>Preparando para análisis</small><br><div style="margin-top: 10px; font-size: 12px;" id="progress-text">0%</div>';
             document.body.appendChild(mensaje);
             
             try {
-                // Usar Tesseract.js para OCR con mejor configuración
+                // PASO 1: Mejorar la imagen antes del OCR
+                console.log('Mejorando imagen para OCR...');
+                const imagenMejorada = await mejorarImagenParaOCR(currentPhoto);
+                console.log('Imagen mejorada correctamente');
+                
+                // Actualizar mensaje
+                const progressElement = document.getElementById('progress-text');
+                if (progressElement) {
+                    progressElement.parentElement.querySelector('small').textContent = 'Analizando texto...';
+                }
+                
+                // PASO 2: Usar Tesseract.js para OCR con la imagen mejorada
                 const worker = await Tesseract.createWorker('spa', 1, {
                     logger: m => {
                         const progressElement = document.getElementById('progress-text');
@@ -120,8 +174,20 @@ async function procesarFoto(file) {
                     errorHandler: err => console.error('Error en Tesseract:', err)
                 });
                 
-                const { data: { text } } = await worker.recognize(currentPhoto);
+                const { data: { text } } = await worker.recognize(imagenMejorada);
                 await worker.terminate();
+                
+                console.log('========== TEXTO COMPLETO DETECTADO ==========');
+                console.log(text);
+                console.log('========== FIN TEXTO ==========');
+                
+                // Mostrar también las líneas numeradas
+                const lineasDebug = text.split('\n');
+                console.log('========== LÍNEAS INDIVIDUALES ==========');
+                lineasDebug.forEach((linea, index) => {
+                    console.log(`Línea ${index}: "${linea}"`);
+                });
+                console.log('========== FIN LÍNEAS ==========');
                 
                 console.log('Texto detectado:', text);
                 
@@ -134,22 +200,57 @@ async function procesarFoto(file) {
                 // Procesar el texto extraído
                 let datosDetectados = [];
                 
-                // 1. Detectar IMPORTE (buscar patrones de precio)
-                const regexImporte = /(?:total|importe|amount|precio|price|pagar|pay)[\s:]*[€$]?\s*(\d{1,6}[.,]\d{2})|(\d{1,6}[.,]\d{2})\s*[€$]/gi;
-                const matchesImporte = text.matchAll(regexImporte);
+                console.log('========== INICIANDO DETECCIÓN ==========');
+                
+                // 1. Detectar IMPORTE (buscar patrones de precio mejorados)
+                console.log('Buscando importes...');
+                
+                // Múltiples patrones para detectar importes
+                const patronesImporte = [
+                    // "Total: 20,00 €" o "Total 20.00€"
+                    /(?:total|importe|amount|precio|price|pagar|pay|a pagar)[\s:]*[€$]?\s*(\d{1,6}[.,]\d{2})\s*[€$]?/gi,
+                    // "20,00 €" o "20.00€" al final de línea
+                    /(\d{1,6}[.,]\d{2})\s*[€$]\s*$/gm,
+                    // Línea que solo tiene un precio
+                    /^\s*[€$]?\s*(\d{1,6}[.,]\d{2})\s*[€$]?\s*$/gm,
+                    // "Total factura 20,00"
+                    /(?:total|factura|subtotal)[\s:]+(\d{1,6}[.,]\d{2})/gi
+                ];
+                
                 let importes = [];
-                for (const match of matchesImporte) {
-                    const importe = (match[1] || match[2]).replace(',', '.');
-                    importes.push(parseFloat(importe));
+                for (const patron of patronesImporte) {
+                    const matches = text.matchAll(patron);
+                    for (const match of matches) {
+                        const importe = (match[1]).replace(',', '.');
+                        const importeNum = parseFloat(importe);
+                        if (importeNum > 0 && importeNum < 100000) { // Filtrar valores razonables
+                            console.log('Importe encontrado:', importe);
+                            importes.push(importeNum);
+                        }
+                    }
                 }
-                // Usar el importe más alto encontrado
+                
+                // Si hay múltiples importes, buscar el que aparece cerca de "total"
                 if (importes.length > 0) {
-                    const importeMax = Math.max(...importes).toFixed(2);
+                    let importeSeleccionado;
+                    
+                    if (importes.length === 1) {
+                        importeSeleccionado = importes[0];
+                    } else {
+                        // Buscar el mayor importe (suele ser el total)
+                        importeSeleccionado = Math.max(...importes);
+                    }
+                    
+                    const importeMax = importeSeleccionado.toFixed(2);
+                    console.log('Importe seleccionado:', importeMax);
                     document.getElementById('importe').value = importeMax;
                     datosDetectados.push('💰 Total: ' + importeMax + '€');
+                } else {
+                    console.log('No se encontraron importes');
                 }
                 
                 // 2. Detectar FECHA (varios formatos y mejor búsqueda)
+                console.log('Buscando fechas...');
                 let fechaDetectada = null;
                 
                 // Patrones de fecha más flexibles
@@ -228,6 +329,7 @@ async function procesarFoto(file) {
                     
                     if (fechaObj >= hace10años && fechaObj <= hoy) {
                         const fechaFormateada = dia + '/' + mes + '/' + año;
+                        console.log('Fecha válida detectada:', fechaFormateada);
                         
                         if (modoManual) {
                             fechaManual.value = fechaFormateada;
@@ -235,10 +337,15 @@ async function procesarFoto(file) {
                             fechaCalendario.value = año + '-' + mes + '-' + dia;
                         }
                         datosDetectados.push('📅 Fecha: ' + fechaFormateada);
+                    } else {
+                        console.log('Fecha descartada (fuera de rango):', fechaObj);
                     }
+                } else {
+                    console.log('No se detectó ninguna fecha');
                 }
                 
                 // 3. Detectar COMERCIO (buscar nombres comunes o en las primeras líneas)
+                console.log('Buscando comercio...');
                 const lineas = text.split('\n').filter(l => l.trim().length > 0);
                 let posibleComercio = '';
                 
@@ -289,9 +396,15 @@ async function procesarFoto(file) {
                 }
                 
                 if (posibleComercio) {
+                    console.log('Comercio detectado:', posibleComercio);
                     document.getElementById('concepto').value = posibleComercio;
                     datosDetectados.push('🏪 Comercio: ' + posibleComercio);
+                } else {
+                    console.log('No se detectó comercio');
                 }
+                
+                console.log('========== DATOS DETECTADOS FINALES ==========');
+                console.log(datosDetectados);
                 
                 // Mostrar resultados
                 if (datosDetectados.length > 0) {
