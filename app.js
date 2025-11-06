@@ -101,10 +101,9 @@ async function procesarFoto(file) {
                 // Convertir imagen a base64 sin el prefijo
                 const base64Image = currentPhoto.split(',')[1];
                 
-                // Usar API key gratuita de Gemini
-                const GEMINI_API_KEY = 'AIzaSyD7cY8K_qVX6xQGwZ5JN3tR7gH9kL2mP4s';
-                
                 // Llamar a Gemini AI con mejor prompt
+                // Nota: La API key debe configurarse como secreto en GitHub
+                const GEMINI_API_KEY = window.GEMINI_API_KEY || 'TU_API_KEY_AQUI';
                 const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
                     method: 'POST',
                     headers: {
