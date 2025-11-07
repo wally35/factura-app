@@ -115,7 +115,7 @@ async function procesarFoto(file) {
                         contents: [{
                             parts: [
                                 {
-                                    text: 'Analiza esta factura y extrae los siguientes datos en formato JSON. Si no encuentras algún dato, usa null. Responde SOLO con el JSON, sin markdown ni texto adicional:\n\n{\n  "total": "importe total a pagar (solo número con punto decimal, ejemplo: 29.04)",\n  "fecha": "fecha en formato DD/MM/YYYY (ejemplo: 05/11/2025)",\n  "comercio": "nombre del comercio o proveedor"\n}\n\nMUY IMPORTANTE: Responde ÚNICAMENTE con el JSON puro, sin ```json ni ningún otro texto.'
+                                    text: 'Analiza esta factura y extrae los siguientes datos en formato JSON. Si no encuentras algún dato, usa null. Responde SOLO con el JSON, sin markdown ni texto adicional:\n\n{\n  "total": "importe total a pagar (solo número con punto decimal, ejemplo: 29.04)",\n  "fecha": "fecha en formato DD/MM/YYYY (ejemplo: 05/11/2025)",\n  "comercio": "nombre del comercio o proveedor",\n  "articulo": "nombre del producto o servicio principal comprado (ejemplo: iPhone 15, Pizza Margarita, Nevera Samsung)"\n}\n\nMUY IMPORTANTE: Responde ÚNICAMENTE con el JSON puro, sin ```json ni ningún otro texto.'
                                 },
                                 {
                                     inline_data: {
@@ -191,10 +191,25 @@ async function procesarFoto(file) {
                             datosDetectados.push('📅 Fecha: ' + datosFactura.fecha);
                         }
                         
-                        // Rellenar concepto/comercio
+                        // Rellenar concepto/comercio y artículo
+                        let conceptoFinal = '';
+                        
                         if (datosFactura.comercio && datosFactura.comercio !== null) {
-                            document.getElementById('concepto').value = datosFactura.comercio;
+                            conceptoFinal = datosFactura.comercio;
                             datosDetectados.push('🏪 Comercio: ' + datosFactura.comercio);
+                        }
+                        
+                        if (datosFactura.articulo && datosFactura.articulo !== null) {
+                            if (conceptoFinal) {
+                                conceptoFinal += ' - ' + datosFactura.articulo;
+                            } else {
+                                conceptoFinal = datosFactura.articulo;
+                            }
+                            datosDetectados.push('📦 Artículo: ' + datosFactura.articulo);
+                        }
+                        
+                        if (conceptoFinal) {
+                            document.getElementById('concepto').value = conceptoFinal;
                         }
                         
                         if (datosDetectados.length > 0) {
