@@ -186,6 +186,7 @@ async function procesarFoto(file) {
                         }
                         
                         // Rellenar fecha
+                        let fechaISO = '';
                         if (datosFactura.fecha && datosFactura.fecha !== null) {
                             if (modoManual) {
                                 fechaManual.value = datosFactura.fecha;
@@ -193,7 +194,7 @@ async function procesarFoto(file) {
                                 // Convertir dd/mm/yyyy a yyyy-mm-dd
                                 const partes = datosFactura.fecha.split('/');
                                 if (partes.length === 3) {
-                                    const fechaISO = `${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`;
+                                    fechaISO = `${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`;
                                     fechaCalendario.value = fechaISO;
                                 }
                             }
@@ -232,6 +233,16 @@ async function procesarFoto(file) {
                                 categoriaSelect.value = datosFactura.categoria;
                                 datosDetectados.push('📦 Categoría: ' + datosFactura.categoria);
                             }
+                        }
+                        
+                        // ✨ NUEVO: Asignar garantía automática si es Electrónica o Electrodomésticos
+                        const garantiaSelect = document.getElementById('garantia-tipo');
+                        if (datosFactura.categoria === 'tecnologia' || datosFactura.categoria === 'electrodomesticos') {
+                            garantiaSelect.value = '3';
+                            datosDetectados.push('✅ Garantía legal: 3 años (automática)');
+                        } else {
+                            // Para otros productos, dejar sin garantía
+                            garantiaSelect.value = '';
                         }
                         
                         if (datosDetectados.length > 0) {
@@ -358,18 +369,29 @@ function renderInvoices(searchTerm = '') {
             
             let garantiaColor = '#666';
             let garantiaIcono = '⏰';
+            let garantiaTexto = '';
+            
+            // Determinar si es garantía legal (3 años) o personalizada
+            const esGarantiaLegal = (invoice.categoria === 'tecnologia' || invoice.categoria === 'electrodomesticos') && invoice.garantiaTipo === '3';
             
             if (diasRestantes < 0) {
                 garantiaColor = '#999';
                 garantiaIcono = '❌';
-                garantiaHTML = '<div style="color: ' + garantiaColor + '; font-size: 0.9em; margin-top: 5px;">' + garantiaIcono + ' Garantía caducada</div>';
+                garantiaTexto = 'Garantía caducada';
             } else if (diasRestantes < 90) {
                 garantiaColor = '#ff6b6b';
                 garantiaIcono = '⚠️';
-                garantiaHTML = '<div style="color: ' + garantiaColor + '; font-size: 0.9em; margin-top: 5px;">' + garantiaIcono + ' Garantía hasta: ' + formatearFecha(invoice.garantia) + ' (' + diasRestantes + ' días)</div>';
+                garantiaTexto = 'Garantía hasta: ' + formatearFecha(invoice.garantia) + ' (' + diasRestantes + ' días)';
             } else {
-                garantiaHTML = '<div style="color: ' + garantiaColor + '; font-size: 0.9em; margin-top: 5px;">' + garantiaIcono + ' Garantía hasta: ' + formatearFecha(invoice.garantia) + '</div>';
+                garantiaTexto = 'Garantía hasta: ' + formatearFecha(invoice.garantia);
             }
+            
+            // Añadir etiqueta si es garantía legal
+            if (esGarantiaLegal && diasRestantes >= 0) {
+                garantiaTexto += ' 🇪🇸 Legal';
+            }
+            
+            garantiaHTML = '<div style="color: ' + garantiaColor + '; font-size: 0.9em; margin-top: 5px;">' + garantiaIcono + ' ' + garantiaTexto + '</div>';
         }
         
         // Generar HTML para imagen (miniatura que se expande)
