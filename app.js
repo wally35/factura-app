@@ -124,7 +124,7 @@ async function procesarFoto(file) {
                         contents: [{
                             parts: [
                                 {
-                                    text: 'Analiza esta factura y extrae los siguientes datos en formato JSON. Si no encuentras algún dato, usa null. Responde SOLO con el JSON, sin markdown ni texto adicional:\n\n{\n  "total": "importe total a pagar (solo número con punto decimal, ejemplo: 29.04)",\n  "fecha": "fecha en formato DD/MM/YYYY (ejemplo: 05/11/2025)",\n  "comercio": "nombre del comercio o proveedor",\n  "articulo": "nombre del producto o servicio principal comprado (ejemplo: iPhone 15, Pizza Margarita, Nevera Samsung)"\n}\n\nMUY IMPORTANTE: Responde ÚNICAMENTE con el JSON puro, sin ```json ni ningún otro texto.'
+                                    text: 'Analiza esta factura y extrae los siguientes datos en formato JSON. Si no encuentras algún dato, usa null. Responde SOLO con el JSON, sin markdown ni texto adicional:\n\n{\n  "total": "importe total a pagar (solo número con punto decimal, ejemplo: 29.04)",\n  "fecha": "fecha en formato DD/MM/YYYY (ejemplo: 05/11/2025)",\n  "comercio": "nombre del comercio o proveedor",\n  "articulo": "nombre del producto o servicio principal comprado (ejemplo: iPhone 15, Pizza Margarita, Nevera Samsung)",\n  "categoria": "categoría más apropiada entre: alimentacion, tecnologia, electrodomesticos, ropa, hogar, transporte, suministros, salud, ocio, deportes, educacion, mascotas, belleza, servicios, otros"\n}\n\nMUY IMPORTANTE: Responde ÚNICAMENTE con el JSON puro, sin ```json ni ningún otro texto.'
                                 },
                                 {
                                     inline_data: {
@@ -219,6 +219,19 @@ async function procesarFoto(file) {
                         
                         if (conceptoFinal) {
                             document.getElementById('concepto').value = conceptoFinal;
+                        }
+                        
+                        // Rellenar categoría automáticamente
+                        if (datosFactura.categoria && datosFactura.categoria !== null) {
+                            const categoriaSelect = document.getElementById('categoria');
+                            // Verificar que la categoría existe en el select
+                            const opcionCategoria = Array.from(categoriaSelect.options).find(
+                                option => option.value === datosFactura.categoria
+                            );
+                            if (opcionCategoria) {
+                                categoriaSelect.value = datosFactura.categoria;
+                                datosDetectados.push('📦 Categoría: ' + datosFactura.categoria);
+                            }
                         }
                         
                         if (datosDetectados.length > 0) {
@@ -414,10 +427,20 @@ function deleteInvoice(id) {
 // Utilidades
 function getCategoryEmoji(category) {
     const emojis = {
-        'electrodomesticos': '⚡',
         'alimentacion': '🍔',
+        'tecnologia': '📱',
+        'electrodomesticos': '⚡',
+        'ropa': '👕',
+        'hogar': '🏠',
         'transporte': '🚗',
         'suministros': '💡',
+        'salud': '🏥',
+        'ocio': '🎮',
+        'deportes': '🏋️',
+        'educacion': '📚',
+        'mascotas': '🐾',
+        'belleza': '💈',
+        'servicios': '🔧',
         'otros': '📦'
     };
     return emojis[category] || '📄';
