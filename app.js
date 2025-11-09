@@ -16,6 +16,15 @@ const count = document.getElementById('count');
 const fechaCalendario = document.getElementById('fecha-calendario');
 const fechaManual = document.getElementById('fecha-manual');
 const toggleBtn = document.getElementById('toggle-fecha');
+const searchInput = document.getElementById('search-input');
+
+// Buscador de facturas
+if (searchInput) {
+    searchInput.addEventListener('input', function(e) {
+        const searchTerm = e.target.value.toLowerCase();
+        renderInvoices(searchTerm);
+    });
+}
 
 // Cambiar entre calendario y manual
 toggleBtn.addEventListener('click', function() {
@@ -306,15 +315,28 @@ form.addEventListener('submit', function(e) {
 });
 
 // Mostrar facturas
-function renderInvoices() {
+function renderInvoices(searchTerm = '') {
     count.textContent = invoices.length;
     
-    if (invoices.length === 0) {
-        invoiceList.innerHTML = '<div class="empty-state">No hay facturas guardadas.<br>¡Añade tu primera factura!</div>';
+    // Filtrar facturas según búsqueda
+    let facturasAMostrar = invoices;
+    if (searchTerm) {
+        facturasAMostrar = invoices.filter(function(invoice) {
+            const concepto = invoice.concepto.toLowerCase();
+            return concepto.includes(searchTerm);
+        });
+    }
+    
+    if (facturasAMostrar.length === 0) {
+        if (searchTerm) {
+            invoiceList.innerHTML = '<div class="empty-state">No se encontraron facturas con "' + searchTerm + '"</div>';
+        } else {
+            invoiceList.innerHTML = '<div class="empty-state">No hay facturas guardadas.<br>¡Añade tu primera factura!</div>';
+        }
         return;
     }
     
-    invoiceList.innerHTML = invoices.map(function(invoice) {
+    invoiceList.innerHTML = facturasAMostrar.map(function(invoice) {
         let garantiaHTML = '';
         if (invoice.garantia) {
             const garantiaFecha = new Date(invoice.garantia);
@@ -337,6 +359,13 @@ function renderInvoices() {
             }
         }
         
+        // Generar HTML para imagen (miniatura que se expande)
+        let imagenHTML = '';
+        if (invoice.photo) {
+            imagenHTML = '<img src="' + invoice.photo + '" alt="Factura" class="invoice-image-preview" onclick="toggleImage(' + invoice.id + ')" id="img-preview-' + invoice.id + '">' +
+                        '<img src="' + invoice.photo + '" alt="Factura completa" class="invoice-image-full" onclick="toggleImage(' + invoice.id + ')" id="img-full-' + invoice.id + '" style="display: none;">';
+        }
+        
         return '<div class="invoice-item">' +
             '<div class="invoice-header">' +
                 '<div>' +
@@ -349,9 +378,25 @@ function renderInvoices() {
             '</div>' +
             '<div><strong>' + invoice.concepto + '</strong></div>' +
             garantiaHTML +
-            (invoice.photo ? '<img src="' + invoice.photo + '" alt="Factura">' : '') +
+            imagenHTML +
         '</div>';
     }).join('');
+}
+
+// Toggle de imagen (expandir/contraer)
+function toggleImage(id) {
+    const preview = document.getElementById('img-preview-' + id);
+    const full = document.getElementById('img-full-' + id);
+    
+    if (preview && full) {
+        if (preview.style.display === 'none') {
+            preview.style.display = 'block';
+            full.style.display = 'none';
+        } else {
+            preview.style.display = 'none';
+            full.style.display = 'block';
+        }
+    }
 }
 
 // Eliminar factura
