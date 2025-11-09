@@ -124,7 +124,7 @@ async function procesarFoto(file) {
                         contents: [{
                             parts: [
                                 {
-                                    text: 'Analiza esta factura y extrae los siguientes datos en formato JSON. Si no encuentras algún dato, usa null. Responde SOLO con el JSON, sin markdown ni texto adicional:\n\n{\n  "total": "importe total a pagar (solo número con punto decimal, ejemplo: 29.04)",\n  "fecha": "fecha en formato DD/MM/YYYY (ejemplo: 05/11/2025)",\n  "comercio": "nombre del comercio o proveedor",\n  "articulo": "nombre del producto o servicio principal comprado (ejemplo: iPhone 15, Pizza Margarita, Nevera Samsung)",\n  "categoria": "categoría más apropiada entre: alimentacion, tecnologia, electrodomesticos, ropa, hogar, transporte, suministros, salud, ocio, deportes, educacion, mascotas, belleza, servicios, otros"\n}\n\nMUY IMPORTANTE: Responde ÚNICAMENTE con el JSON puro, sin ```json ni ningún otro texto.'
+                                    text: 'Eres un experto en análisis de facturas. Analiza esta factura/ticket y extrae los datos más importantes.\n\nINSTRUCCIONES CRÍTICAS:\n1. Busca el TOTAL FINAL A PAGAR (el precio más grande, el que está al final, con IVA incluido)\n2. Para la fecha, busca "Fecha de factura", "Fecha", "Date" o similar\n3. Para el comercio, busca el nombre de la tienda/empresa (Amazon, MediaMarkt, Mercadona, etc.)\n4. Para el artículo, extrae el producto principal (si hay varios, el primero o el más importante)\n5. Clasifica en una de estas categorías: alimentacion, tecnologia, electrodomesticos, ropa, hogar, transporte, suministros, salud, ocio, deportes, educacion, mascotas, belleza, servicios, otros\n\nResponde ÚNICAMENTE con este JSON (sin markdown, sin ```json, sin explicaciones):\n\n{\n  "total": "18.04",\n  "fecha": "11/10/2025",\n  "comercio": "Amazon",\n  "articulo": "Organizador de cables",\n  "categoria": "hogar"\n}\n\nSi no encuentras algún dato, usa null. IMPORTANTE: Responde SOLO el JSON, nada más.'
                                 },
                                 {
                                     inline_data: {
@@ -177,6 +177,11 @@ async function procesarFoto(file) {
                     try {
                         const datosFactura = JSON.parse(jsonText);
                         let datosDetectados = [];
+                        
+                        // Validar que el JSON tenga la estructura esperada
+                        if (!datosFactura || typeof datosFactura !== 'object') {
+                            throw new Error('Respuesta no válida');
+                        }
                         
                         // Rellenar importe
                         if (datosFactura.total && datosFactura.total !== null) {
@@ -248,13 +253,18 @@ async function procesarFoto(file) {
                         if (datosDetectados.length > 0) {
                             alert('✅ Datos detectados con IA:\n\n' + datosDetectados.join('\n') + '\n\n⚠️ Revisa que todo sea correcto antes de guardar.');
                         } else {
-                            alert('⚠️ La IA no pudo detectar datos automáticamente.\nPuedes introducirlos manualmente.');
+                            alert('⚠️ La IA detectó la factura pero no pudo extraer datos específicos.\nIntroduce los datos manualmente.');
                         }
                         
                     } catch (parseError) {
                         console.error('Error al parsear JSON:', parseError);
                         console.error('Texto recibido:', jsonText);
-                        alert('⚠️ La IA no pudo extraer los datos en el formato esperado.\nIntroduce los datos manualmente.');
+                        
+                        // Intentar extraer al menos algunos datos básicos
+                        let mensajeError = '⚠️ La IA tuvo problemas al extraer los datos.\n\n';
+                        mensajeError += 'Respuesta recibida:\n' + jsonText.substring(0, 200);
+                        mensajeError += '\n\nPor favor, introduce los datos manualmente.';
+                        alert(mensajeError);
                     }
                 } else {
                     console.error('Respuesta inesperada:', data);
