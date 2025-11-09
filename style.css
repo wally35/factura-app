@@ -187,6 +187,25 @@ form {
     font-size: 20px;
 }
 
+.search-box {
+    margin-bottom: 20px;
+}
+
+.search-box input {
+    width: 100%;
+    padding: 14px 20px;
+    border: 2px solid #e0e0e0;
+    border-radius: 12px;
+    font-size: 16px;
+    transition: all 0.3s ease;
+}
+
+.search-box input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
 .invoice-item {
     background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
     padding: 20px;
@@ -233,6 +252,39 @@ form {
     margin-top: 12px;
     background: white;
     padding: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.invoice-item img:hover {
+    transform: scale(1.02);
+}
+
+.invoice-image-preview {
+    width: 50px;
+    height: 50px;
+    object-fit: cover;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-top: 10px;
+}
+
+.invoice-image-preview:hover {
+    transform: scale(1.1);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.invoice-image-full {
+    display: none;
+    width: 100%;
+    max-height: 300px;
+    object-fit: contain;
+    border-radius: 10px;
+    margin-top: 12px;
+    background: white;
+    padding: 10px;
+    cursor: pointer;
 }
 
 .btn-delete {
