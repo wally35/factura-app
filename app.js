@@ -434,6 +434,7 @@ function renderInvoices(searchTerm = '') {
         } else {
             invoiceList.innerHTML = '<div class="empty-state">No hay facturas guardadas.<br>¡Añade tu primera factura!</div>';
         }
+        checkWarrantyWarnings(); // Actualizar avisos
         return;
     }
     
@@ -520,6 +521,9 @@ function renderInvoices(searchTerm = '') {
             imagenHTML +
         '</div>';
     }).join('');
+    
+    // Actualizar avisos de garantías
+    checkWarrantyWarnings();
 }
 
 // Toggle de productos
@@ -707,3 +711,118 @@ function formatearFecha(fechaISO) {
 
 // Cargar facturas al inicio
 renderInvoices();
+checkWarrantyWarnings();
+
+// Función para verificar avisos de garantías
+function checkWarrantyWarnings() {
+    const warningsSection = document.getElementById('warnings-section');
+    const warningsList = document.getElementById('warnings-list');
+    const warningBadge = document.getElementById('warning-badge');
+    const warningCount = document.getElementById('warning-count');
+    
+    const hoy = new Date();
+    const warnings = [];
+    
+    // Revisar todas las facturas
+    invoices.forEach(function(invoice) {
+        // Verificar garantía legal
+        if (invoice.garantia) {
+            const garantiaFecha = new Date(invoice.garantia);
+            const diasRestantes = Math.floor((garantiaFecha - hoy) / (1000 * 60 * 60 * 24));
+            
+            if (diasRestantes >= 0 && diasRestantes <= 90) {
+                warnings.push({
+                    id: invoice.id,
+                    tipo: 'legal',
+                    comercio: invoice.comercio,
+                    articulos: invoice.articulos,
+                    dias: diasRestantes,
+                    fecha: invoice.garantia,
+                    urgente: diasRestantes <= 30
+                });
+            }
+        }
+        
+        // Verificar garantía extendida
+        if (invoice.garantiaExtendida && invoice.garantiaExtVence) {
+            const extFecha = new Date(invoice.garantiaExtVence);
+            const diasRestantes = Math.floor((extFecha - hoy) / (1000 * 60 * 60 * 24));
+            
+            if (diasRestantes >= 0 && diasRestantes <= 90) {
+                warnings.push({
+                    id: invoice.id,
+                    tipo: 'extendida',
+                    nombre: invoice.garantiaExtendida,
+                    comercio: invoice.comercio,
+                    articulos: invoice.articulos,
+                    dias: diasRestantes,
+                    fecha: invoice.garantiaExtVence,
+                    urgente: diasRestantes <= 30
+                });
+            }
+        }
+    });
+    
+    // Mostrar u ocultar sección de avisos
+    if (warnings.length > 0) {
+        warningsSection.style.display = 'block';
+        warningBadge.style.display = 'block';
+        warningCount.textContent = warnings.length;
+        
+        // Ordenar por días restantes (más urgente primero)
+        warnings.sort(function(a, b) {
+            return a.dias - b.dias;
+        });
+        
+        // Generar HTML de avisos
+        warningsList.innerHTML = warnings.map(function(warning) {
+            const articulo = warning.articulos && warning.articulos.length > 0 
+                ? warning.articulos[0] 
+                : warning.comercio;
+            
+            let urgencyClass = '';
+            let icon = '⚠️';
+            let urgencyText = '';
+            
+            if (warning.dias <= 7) {
+                urgencyClass = 'urgent';
+                icon = '🔴';
+                urgencyText = '¡MUY URGENTE!';
+            } else if (warning.dias <= 30) {
+                urgencyClass = 'urgent';
+                icon = '🔴';
+                urgencyText = 'URGENTE';
+            } else if (warning.dias <= 60) {
+                urgencyClass = 'moderate';
+                icon = '🟡';
+                urgencyText = 'Próximamente';
+            } else {
+                urgencyClass = 'moderate';
+                icon = '🟡';
+                urgencyText = 'Aviso';
+            }
+            
+            const tipoGarantia = warning.tipo === 'legal' 
+                ? 'Garantía Legal 🇪🇸' 
+                : warning.nombre;
+            
+            return '<div class="warning-item ' + urgencyClass + '">' +
+                '<div class="warning-item-info">' +
+                    '<div class="warning-item-title">' +
+                        icon + ' ' + urgencyText + ' - ' + articulo +
+                    '</div>' +
+                    '<div class="warning-item-details">' +
+                        tipoGarantia + ' • Vence: ' + formatearFecha(warning.fecha) +
+                    '</div>' +
+                '</div>' +
+                '<div class="warning-item-days">' +
+                    warning.dias + '<br><small style="font-size: 12px;">días</small>' +
+                '</div>' +
+            '</div>';
+        }).join('');
+        
+    } else {
+        warningsSection.style.display = 'none';
+        warningBadge.style.display = 'none';
+    }
+}
