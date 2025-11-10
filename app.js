@@ -114,7 +114,7 @@ async function procesarFoto(file) {
                 // Convertir imagen a base64
                 const base64Image = currentPhoto.split(',')[1];
                 
-                // Llamar a Gemini AI
+                // Llamar a Gemini AI con prompt mejorado
                 const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
                     method: 'POST',
                     headers: {
@@ -124,7 +124,7 @@ async function procesarFoto(file) {
                         contents: [{
                             parts: [
                                 {
-                                    text: 'Eres un experto en análisis de facturas. Analiza esta factura/ticket y extrae los datos más importantes.\n\nINSTRUCCIONES CRÍTICAS:\n1. Busca el TOTAL FINAL A PAGAR (el precio más grande, el que está al final, con IVA incluido)\n2. Para la fecha, busca "Fecha de factura", "Fecha", "Date" o similar\n3. Para el comercio, busca el nombre de la tienda/empresa (Amazon, MediaMarkt, Mercadona, etc.)\n4. Para el artículo, extrae el producto principal (si hay varios, el primero o el más importante)\n5. Clasifica en una de estas categorías: alimentacion, tecnologia, electrodomesticos, ropa, hogar, transporte, suministros, salud, ocio, deportes, educacion, mascotas, belleza, servicios, otros\n\nResponde ÚNICAMENTE con este JSON (sin markdown, sin ```json, sin explicaciones):\n\n{\n  "total": "18.04",\n  "fecha": "11/10/2025",\n  "comercio": "Amazon",\n  "articulo": "Organizador de cables",\n  "categoria": "hogar"\n}\n\nSi no encuentras algún dato, usa null. IMPORTANTE: Responde SOLO el JSON, nada más.'
+                                    text: 'Eres un experto en análisis de facturas. Analiza esta imagen y extrae la información clave.\n\nINSTRUCCIONES:\n\n1. TOTAL: Busca el importe FINAL a pagar (normalmente el número más grande, al final del documento, puede decir "Total", "Total a pagar", "Amount", etc.). Si hay varios totales, elige el que incluye IVA/impuestos.\n\n2. FECHA: Busca la fecha de la factura (puede estar como "Fecha", "Date", "Fecha de factura", etc.). Formato: DD/MM/YYYY\n\n3. COMERCIO: El nombre de la tienda o empresa (Amazon, MediaMarkt, Mercadona, etc.)\n\n4. ARTÍCULO: El producto o servicio principal comprado. Si hay varios productos, elige el más relevante o el primero. Simplifica nombres muy largos.\n\n5. CATEGORÍA: Clasifica en UNA de estas opciones:\n- alimentacion (comida, bebidas, supermercado)\n- tecnologia (móviles, ordenadores, tablets, TVs, consolas, auriculares)\n- electrodomesticos (lavadoras, neveras, hornos, microondas, aspiradoras)\n- ropa (ropa, zapatos, complementos)\n- hogar (muebles, decoración, utensilios cocina)\n- transporte (gasolina, taxi, parking, transporte público)\n- suministros (luz, agua, gas, internet, teléfono)\n- salud (farmacia, médico, hospital)\n- ocio (cine, restaurantes, bares, entretenimiento)\n- deportes (gimnasio, material deportivo)\n- educacion (libros, cursos, material escolar)\n- mascotas (veterinario, comida mascotas)\n- belleza (peluquería, cosméticos)\n- servicios (reparaciones, seguros, gestorías)\n- otros (si no encaja en ninguna anterior)\n\nResponde ÚNICAMENTE con este formato JSON (sin ```json, sin markdown, sin explicaciones):\n\n{\n  "total": "18.04",\n  "fecha": "11/10/2025",\n  "comercio": "Amazon",\n  "articulo": "Organizador de cables",\n  "categoria": "hogar"\n}\n\nSi no encuentras algún dato, usa null en ese campo.'
                                 },
                                 {
                                     inline_data: {
@@ -178,11 +178,6 @@ async function procesarFoto(file) {
                         const datosFactura = JSON.parse(jsonText);
                         let datosDetectados = [];
                         
-                        // Validar que el JSON tenga la estructura esperada
-                        if (!datosFactura || typeof datosFactura !== 'object') {
-                            throw new Error('Respuesta no válida');
-                        }
-                        
                         // Rellenar importe
                         if (datosFactura.total && datosFactura.total !== null) {
                             const importeNumerico = String(datosFactura.total).replace(',', '.');
@@ -191,7 +186,6 @@ async function procesarFoto(file) {
                         }
                         
                         // Rellenar fecha
-                        let fechaISO = '';
                         if (datosFactura.fecha && datosFactura.fecha !== null) {
                             if (modoManual) {
                                 fechaManual.value = datosFactura.fecha;
@@ -199,7 +193,7 @@ async function procesarFoto(file) {
                                 // Convertir dd/mm/yyyy a yyyy-mm-dd
                                 const partes = datosFactura.fecha.split('/');
                                 if (partes.length === 3) {
-                                    fechaISO = `${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`;
+                                    const fechaISO = `${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`;
                                     fechaCalendario.value = fechaISO;
                                 }
                             }
@@ -240,7 +234,7 @@ async function procesarFoto(file) {
                             }
                         }
                         
-                        // ✨ NUEVO: Asignar garantía automática si es Electrónica o Electrodomésticos
+                        // ✨ Asignar garantía automática si es Electrónica o Electrodomésticos
                         const garantiaSelect = document.getElementById('garantia-tipo');
                         if (datosFactura.categoria === 'tecnologia' || datosFactura.categoria === 'electrodomesticos') {
                             garantiaSelect.value = '3';
@@ -253,18 +247,13 @@ async function procesarFoto(file) {
                         if (datosDetectados.length > 0) {
                             alert('✅ Datos detectados con IA:\n\n' + datosDetectados.join('\n') + '\n\n⚠️ Revisa que todo sea correcto antes de guardar.');
                         } else {
-                            alert('⚠️ La IA detectó la factura pero no pudo extraer datos específicos.\nIntroduce los datos manualmente.');
+                            alert('⚠️ La IA no pudo detectar datos automáticamente.\nPuedes introducirlos manualmente.');
                         }
                         
                     } catch (parseError) {
                         console.error('Error al parsear JSON:', parseError);
                         console.error('Texto recibido:', jsonText);
-                        
-                        // Intentar extraer al menos algunos datos básicos
-                        let mensajeError = '⚠️ La IA tuvo problemas al extraer los datos.\n\n';
-                        mensajeError += 'Respuesta recibida:\n' + jsonText.substring(0, 200);
-                        mensajeError += '\n\nPor favor, introduce los datos manualmente.';
-                        alert(mensajeError);
+                        alert('⚠️ La IA no pudo extraer los datos en el formato esperado.\nIntroduce los datos manualmente.');
                     }
                 } else {
                     console.error('Respuesta inesperada:', data);
@@ -379,29 +368,18 @@ function renderInvoices(searchTerm = '') {
             
             let garantiaColor = '#666';
             let garantiaIcono = '⏰';
-            let garantiaTexto = '';
-            
-            // Determinar si es garantía legal (3 años) o personalizada
-            const esGarantiaLegal = (invoice.categoria === 'tecnologia' || invoice.categoria === 'electrodomesticos') && invoice.garantiaTipo === '3';
             
             if (diasRestantes < 0) {
                 garantiaColor = '#999';
                 garantiaIcono = '❌';
-                garantiaTexto = 'Garantía caducada';
+                garantiaHTML = '<div style="color: ' + garantiaColor + '; font-size: 0.9em; margin-top: 5px;">' + garantiaIcono + ' Garantía caducada</div>';
             } else if (diasRestantes < 90) {
                 garantiaColor = '#ff6b6b';
                 garantiaIcono = '⚠️';
-                garantiaTexto = 'Garantía hasta: ' + formatearFecha(invoice.garantia) + ' (' + diasRestantes + ' días)';
+                garantiaHTML = '<div style="color: ' + garantiaColor + '; font-size: 0.9em; margin-top: 5px;">' + garantiaIcono + ' Garantía hasta: ' + formatearFecha(invoice.garantia) + ' (' + diasRestantes + ' días)</div>';
             } else {
-                garantiaTexto = 'Garantía hasta: ' + formatearFecha(invoice.garantia);
+                garantiaHTML = '<div style="color: ' + garantiaColor + '; font-size: 0.9em; margin-top: 5px;">' + garantiaIcono + ' Garantía hasta: ' + formatearFecha(invoice.garantia) + '</div>';
             }
-            
-            // Añadir etiqueta si es garantía legal
-            if (esGarantiaLegal && diasRestantes >= 0) {
-                garantiaTexto += ' 🇪🇸 Legal';
-            }
-            
-            garantiaHTML = '<div style="color: ' + garantiaColor + '; font-size: 0.9em; margin-top: 5px;">' + garantiaIcono + ' ' + garantiaTexto + '</div>';
         }
         
         // Generar HTML para imagen (miniatura que se expande)
