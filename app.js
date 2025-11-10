@@ -18,6 +18,30 @@ const fechaManual = document.getElementById('fecha-manual');
 const toggleBtn = document.getElementById('toggle-fecha');
 const searchInput = document.getElementById('search-input');
 
+// Menú
+const menuBtn = document.getElementById('menu-btn');
+const menuOverlay = document.getElementById('menu-overlay');
+const menuPanel = document.getElementById('menu-panel');
+const menuClose = document.getElementById('menu-close');
+
+// Abrir/cerrar menú
+if (menuBtn && menuOverlay && menuPanel) {
+    menuBtn.addEventListener('click', function() {
+        menuOverlay.classList.add('active');
+        menuPanel.classList.add('active');
+    });
+    
+    menuClose.addEventListener('click', closeMenu);
+    menuOverlay.addEventListener('click', closeMenu);
+}
+
+function closeMenu() {
+    if (menuOverlay && menuPanel) {
+        menuOverlay.classList.remove('active');
+        menuPanel.classList.remove('active');
+    }
+}
+
 // Buscador de facturas
 if (searchInput) {
     searchInput.addEventListener('input', function(e) {
@@ -70,10 +94,10 @@ function toggleGarantiaPersonalizada() {
     
     if (garantiaTipo === 'custom') {
         garantiaCustom.style.display = 'block';
-        garantiaCustom.setAttribute('required', '');
+        garantiaCustom.querySelector('input').setAttribute('required', '');
     } else {
         garantiaCustom.style.display = 'none';
-        garantiaCustom.removeAttribute('required');
+        garantiaCustom.querySelector('input').removeAttribute('required');
     }
 }
 
@@ -124,7 +148,46 @@ async function procesarFoto(file) {
                         contents: [{
                             parts: [
                                 {
-                                    text: 'Analiza esta factura/ticket y extrae los datos principales en formato JSON.\n\nBUSCA:\n\n1. TOTAL: El importe final a pagar (el número más grande, normalmente al final). Si hay varios totales, el que incluye IVA.\n\n2. FECHA: Formato DD/MM/YYYY. Puede aparecer como "Fecha", "Date", o similar.\n\n3. COMERCIO: Nombre de la tienda o empresa (Amazon, Mercadona, MediaMarkt, etc.)\n\n4. ARTÍCULO: Producto o servicio principal. Si hay varios, el primero. Simplifica nombres largos.\n\n5. CATEGORÍA (elige una):\nalimentacion, tecnologia, electrodomesticos, ropa, hogar, transporte, suministros, salud, ocio, deportes, educacion, mascotas, belleza, servicios, otros\n\nResponde SOLO con JSON (sin markdown ni explicaciones):\n\n{\n  "total": "18.04",\n  "fecha": "11/10/2025",\n  "comercio": "Amazon",\n  "articulo": "Organizador cables",\n  "categoria": "hogar"\n}\n\nSi no encuentras un dato, usa null.'
+                                    text: `Analiza esta factura/ticket y extrae los datos principales en formato JSON.
+
+BUSCA:
+
+1. TOTAL: El importe final a pagar (el número más grande, normalmente al final). Si hay varios totales, el que incluye IVA.
+
+2. FECHA: Formato DD/MM/YYYY. Puede aparecer como "Fecha", "Date", o similar.
+
+3. COMERCIO: Nombre de la tienda o empresa (Amazon, Mercadona, MediaMarkt, etc.)
+
+4. ARTÍCULOS: Lista de productos o servicios. IMPORTANTE:
+   - Si hay VARIOS productos, devuelve un ARRAY con TODOS
+   - Si hay UN SOLO producto, devuelve array con ese producto
+   - Simplifica nombres largos
+   - Elimina códigos (B0CS5V9QZG, SKU, etc.)
+
+5. CATEGORÍA (elige una):
+alimentacion, tecnologia, electrodomesticos, ropa, hogar, transporte, suministros, salud, ocio, deportes, educacion, mascotas, belleza, servicios, otros
+
+6. GARANTÍA EXTENDIDA (opcional):
+   Busca menciones de:
+   - "Garantía extendida", "Extended warranty"
+   - "AppleCare", "Care Pack", "Plus"
+   - "Contrato mantenimiento", "Service contract"
+   - "Seguro", "Protection plan"
+   Si encuentras algo, extrae el nombre y años adicionales.
+
+Responde SOLO con JSON (sin markdown ni explicaciones):
+
+{
+  "total": "18.04",
+  "fecha": "11/10/2025",
+  "comercio": "Amazon",
+  "articulos": ["Organizador cables", "Cable USB"],
+  "categoria": "hogar",
+  "garantia_extendida": null,
+  "garantia_extra_anos": 0
+}
+
+Si no encuentras un dato, usa null o [] para arrays.`
                                 },
                                 {
                                     inline_data: {
@@ -200,31 +263,22 @@ async function procesarFoto(file) {
                             datosDetectados.push('📅 Fecha: ' + datosFactura.fecha);
                         }
                         
-                        // Rellenar concepto/comercio y artículo
-                        let conceptoFinal = '';
-                        
+                        // Rellenar comercio
                         if (datosFactura.comercio && datosFactura.comercio !== null) {
-                            conceptoFinal = datosFactura.comercio;
+                            document.getElementById('comercio').value = datosFactura.comercio;
                             datosDetectados.push('🏪 Comercio: ' + datosFactura.comercio);
                         }
                         
-                        if (datosFactura.articulo && datosFactura.articulo !== null) {
-                            if (conceptoFinal) {
-                                conceptoFinal += ' - ' + datosFactura.articulo;
-                            } else {
-                                conceptoFinal = datosFactura.articulo;
-                            }
-                            datosDetectados.push('📦 Artículo: ' + datosFactura.articulo);
-                        }
-                        
-                        if (conceptoFinal) {
-                            document.getElementById('concepto').value = conceptoFinal;
+                        // Rellenar artículos (array)
+                        if (datosFactura.articulos && Array.isArray(datosFactura.articulos) && datosFactura.articulos.length > 0) {
+                            const articulosInput = document.getElementById('articulos');
+                            articulosInput.value = datosFactura.articulos.join(', ');
+                            datosDetectados.push('📦 Artículos: ' + datosFactura.articulos.length + ' producto(s)');
                         }
                         
                         // Rellenar categoría automáticamente
                         if (datosFactura.categoria && datosFactura.categoria !== null) {
                             const categoriaSelect = document.getElementById('categoria');
-                            // Verificar que la categoría existe en el select
                             const opcionCategoria = Array.from(categoriaSelect.options).find(
                                 option => option.value === datosFactura.categoria
                             );
@@ -234,14 +288,20 @@ async function procesarFoto(file) {
                             }
                         }
                         
-                        // ✨ Asignar garantía automática si es Electrónica o Electrodomésticos
+                        // Asignar garantía automática si es Electrónica o Electrodomésticos
                         const garantiaSelect = document.getElementById('garantia-tipo');
                         if (datosFactura.categoria === 'tecnologia' || datosFactura.categoria === 'electrodomesticos') {
                             garantiaSelect.value = '3';
-                            datosDetectados.push('✅ Garantía legal: 3 años (automática)');
+                            datosDetectados.push('✅ Garantía legal: 3 años 🇪🇸 (automática)');
                         } else {
-                            // Para otros productos, dejar sin garantía
                             garantiaSelect.value = '';
+                        }
+                        
+                        // Garantía extendida detectada
+                        if (datosFactura.garantia_extendida && datosFactura.garantia_extendida !== null) {
+                            document.getElementById('garantia-ext-nombre').value = datosFactura.garantia_extendida;
+                            document.getElementById('garantia-ext-anos').value = datosFactura.garantia_extra_anos || '';
+                            datosDetectados.push('🛡️ Garantía extendida: ' + datosFactura.garantia_extendida);
                         }
                         
                         if (datosDetectados.length > 0) {
@@ -261,7 +321,6 @@ async function procesarFoto(file) {
                 }
                 
             } catch (error) {
-                // Quitar mensaje de carga si aún está
                 const mensajeExistente = document.getElementById('loading-ia');
                 if (mensajeExistente) {
                     document.body.removeChild(mensajeExistente);
@@ -291,7 +350,6 @@ form.addEventListener('submit', function(e) {
     let fechaISO;
     if (modoManual) {
         fecha = fechaManual.value;
-        // Convertir dd/mm/yyyy a ISO
         const partes = fecha.split('/');
         fechaISO = partes[2] + '-' + partes[1] + '-' + partes[0];
     } else {
@@ -303,24 +361,43 @@ form.addEventListener('submit', function(e) {
         fecha = dia + '/' + mes + '/' + año;
     }
     
-    // Calcular garantía
+    // Calcular garantía legal
     let garantiaHasta = '';
     const garantiaTipo = document.getElementById('garantia-tipo').value;
     
     if (garantiaTipo === 'custom') {
-        garantiaHasta = document.getElementById('garantia-custom').value;
+        garantiaHasta = document.getElementById('garantia-custom-date').value;
     } else if (garantiaTipo !== '') {
         garantiaHasta = calcularGarantia(fechaISO, garantiaTipo);
     }
+    
+    // Garantía extendida
+    const garantiaExtNombre = document.getElementById('garantia-ext-nombre').value;
+    const garantiaExtAnos = document.getElementById('garantia-ext-anos').value;
+    let garantiaExtVence = '';
+    
+    if (garantiaExtAnos && parseInt(garantiaExtAnos) > 0) {
+        const añosLegal = parseInt(garantiaTipo) || 0;
+        const añosTotal = añosLegal + parseInt(garantiaExtAnos);
+        garantiaExtVence = calcularGarantia(fechaISO, añosTotal);
+    }
+    
+    // Procesar artículos (separados por coma)
+    const articulosTexto = document.getElementById('articulos').value;
+    const articulosArray = articulosTexto.split(',').map(art => art.trim()).filter(art => art.length > 0);
     
     const invoice = {
         id: Date.now(),
         fecha: fecha,
         importe: parseFloat(document.getElementById('importe').value),
-        concepto: document.getElementById('concepto').value,
+        comercio: document.getElementById('comercio').value,
+        articulos: articulosArray,
         categoria: document.getElementById('categoria').value,
         garantia: garantiaHasta,
         garantiaTipo: garantiaTipo,
+        garantiaExtendida: garantiaExtNombre || null,
+        garantiaExtAnos: garantiaExtAnos ? parseInt(garantiaExtAnos) : 0,
+        garantiaExtVence: garantiaExtVence || null,
         photo: currentPhoto,
         timestamp: new Date().toISOString()
     };
@@ -341,12 +418,13 @@ form.addEventListener('submit', function(e) {
 function renderInvoices(searchTerm = '') {
     count.textContent = invoices.length;
     
-    // Filtrar facturas según búsqueda
     let facturasAMostrar = invoices;
     if (searchTerm) {
         facturasAMostrar = invoices.filter(function(invoice) {
-            const concepto = invoice.concepto.toLowerCase();
-            return concepto.includes(searchTerm);
+            const comercio = (invoice.comercio || '').toLowerCase();
+            const articulos = (invoice.articulos || []).join(' ').toLowerCase();
+            const concepto = (invoice.concepto || '').toLowerCase();
+            return comercio.includes(searchTerm) || articulos.includes(searchTerm) || concepto.includes(searchTerm);
         });
     }
     
@@ -360,6 +438,32 @@ function renderInvoices(searchTerm = '') {
     }
     
     invoiceList.innerHTML = facturasAMostrar.map(function(invoice) {
+        // Compatibilidad con facturas antiguas
+        const comercio = invoice.comercio || '';
+        const articulos = invoice.articulos || [];
+        const concepto = invoice.concepto || '';
+        
+        let displayText = comercio;
+        
+        // Mostrar artículos
+        let articulosHTML = '';
+        if (articulos.length > 0) {
+            if (articulos.length === 1) {
+                displayText = comercio + ' - ' + articulos[0];
+            } else {
+                displayText = comercio;
+                articulosHTML = '<div class="productos-toggle" onclick="toggleProductos(' + invoice.id + ')">' +
+                    '📦 ' + articulos.length + ' productos ▼' +
+                '</div>' +
+                '<div class="productos-expandido" id="productos-' + invoice.id + '" style="display: none;">' +
+                    '<ul>' + articulos.map(art => '<li>• ' + art + '</li>').join('') + '</ul>' +
+                '</div>';
+            }
+        } else if (concepto) {
+            displayText = concepto;
+        }
+        
+        // Garantías
         let garantiaHTML = '';
         if (invoice.garantia) {
             const garantiaFecha = new Date(invoice.garantia);
@@ -372,17 +476,28 @@ function renderInvoices(searchTerm = '') {
             if (diasRestantes < 0) {
                 garantiaColor = '#999';
                 garantiaIcono = '❌';
-                garantiaHTML = '<div style="color: ' + garantiaColor + '; font-size: 0.9em; margin-top: 5px;">' + garantiaIcono + ' Garantía caducada</div>';
+                garantiaHTML = '<div style="color: ' + garantiaColor + '; font-size: 0.9em; margin-top: 5px;">' + garantiaIcono + ' Garantía legal caducada</div>';
             } else if (diasRestantes < 90) {
                 garantiaColor = '#ff6b6b';
                 garantiaIcono = '⚠️';
-                garantiaHTML = '<div style="color: ' + garantiaColor + '; font-size: 0.9em; margin-top: 5px;">' + garantiaIcono + ' Garantía hasta: ' + formatearFecha(invoice.garantia) + ' (' + diasRestantes + ' días)</div>';
+                garantiaHTML = '<div style="color: ' + garantiaColor + '; font-size: 0.9em; margin-top: 5px;">' + garantiaIcono + ' Garantía legal: ' + formatearFecha(invoice.garantia) + ' (' + diasRestantes + ' días)</div>';
             } else {
-                garantiaHTML = '<div style="color: ' + garantiaColor + '; font-size: 0.9em; margin-top: 5px;">' + garantiaIcono + ' Garantía hasta: ' + formatearFecha(invoice.garantia) + '</div>';
+                garantiaHTML = '<div style="color: ' + garantiaColor + '; font-size: 0.9em; margin-top: 5px;">' + garantiaIcono + ' Garantía legal: ' + formatearFecha(invoice.garantia) + ' 🇪🇸</div>';
             }
         }
         
-        // Generar HTML para imagen (miniatura que se expande)
+        // Garantía extendida
+        if (invoice.garantiaExtendida && invoice.garantiaExtVence) {
+            const extFecha = new Date(invoice.garantiaExtVence);
+            const hoy = new Date();
+            const diasRestantes = Math.floor((extFecha - hoy) / (1000 * 60 * 60 * 24));
+            
+            if (diasRestantes >= 0) {
+                garantiaHTML += '<div style="color: #4facfe; font-size: 0.9em; margin-top: 3px;">🛡️ ' + invoice.garantiaExtendida + ': ' + formatearFecha(invoice.garantiaExtVence) + '</div>';
+            }
+        }
+        
+        // Imagen
         let imagenHTML = '';
         if (invoice.photo) {
             imagenHTML = '<img src="' + invoice.photo + '" alt="Factura" class="invoice-image-preview" onclick="toggleImage(' + invoice.id + ')" id="img-preview-' + invoice.id + '">' +
@@ -399,14 +514,27 @@ function renderInvoices(searchTerm = '') {
                 '</div>' +
                 '<button class="btn-delete" onclick="deleteInvoice(' + invoice.id + ')">🗑️</button>' +
             '</div>' +
-            '<div><strong>' + invoice.concepto + '</strong></div>' +
+            '<div><strong>' + displayText + '</strong></div>' +
+            articulosHTML +
             garantiaHTML +
             imagenHTML +
         '</div>';
     }).join('');
 }
 
-// Toggle de imagen (expandir/contraer)
+// Toggle de productos
+function toggleProductos(id) {
+    const productosDiv = document.getElementById('productos-' + id);
+    if (productosDiv) {
+        if (productosDiv.style.display === 'none') {
+            productosDiv.style.display = 'block';
+        } else {
+            productosDiv.style.display = 'none';
+        }
+    }
+}
+
+// Toggle de imagen
 function toggleImage(id) {
     const preview = document.getElementById('img-preview-' + id);
     const full = document.getElementById('img-full-' + id);
@@ -424,13 +552,125 @@ function toggleImage(id) {
 
 // Eliminar factura
 function deleteInvoice(id) {
-    var confirmado = confirm('¿Eliminar esta factura?');
-    if (confirmado) {
+    if (confirm('¿Eliminar esta factura?')) {
         invoices = invoices.filter(function(inv) { 
             return inv.id !== id; 
         });
         localStorage.setItem('invoices', JSON.stringify(invoices));
         renderInvoices();
+    }
+}
+
+// Funciones del menú
+function showAbout() {
+    closeMenu();
+    alert(`📱 DocuScan Pro v2.0
+
+Aplicación de gestión de facturas con IA
+
+✨ Características:
+• Escaneo automático con Gemini AI
+• Detección de múltiples productos
+• Garantías automáticas según ley española
+• Garantías extendidas (AppleCare, etc.)
+• Búsqueda inteligente
+• Almacenamiento local seguro
+
+👨‍💻 Desarrollado por David
+🏢 GPInformático
+📧 Contacto: gpinformatico.com
+
+© 2025 Todos los derechos reservados`);
+}
+
+function showLegal() {
+    closeMenu();
+    alert(`⚖️ AVISO LEGAL
+
+RESPONSABILIDAD
+Esta aplicación se proporciona "tal cual" sin garantías. El usuario es responsable de verificar la exactitud de los datos detectados por la IA.
+
+PRIVACIDAD
+• Todos los datos se almacenan localmente en tu dispositivo
+• No se envía información a servidores externos
+• Las imágenes de facturas se procesan mediante Gemini AI
+• Puedes eliminar todos tus datos en cualquier momento
+
+GARANTÍAS
+La información sobre garantías legales es orientativa. Consulta la legislación vigente y los términos específicos de cada producto.
+
+LEY DE GARANTÍAS EN ESPAÑA
+Según el Real Decreto Legislativo 1/2007:
+• Productos de consumo: mínimo 3 años
+• Electrodomésticos y tecnología: 3 años recomendados
+
+Para más información: gpinformatico.com`);
+}
+
+function exportData() {
+    closeMenu();
+    if (invoices.length === 0) {
+        alert('❌ No hay facturas para exportar');
+        return;
+    }
+    
+    const dataStr = JSON.stringify(invoices, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'facturas_backup_' + new Date().toISOString().split('T')[0] + '.json';
+    link.click();
+    URL.revokeObjectURL(url);
+    
+    alert('✅ Datos exportados correctamente');
+}
+
+function importData() {
+    closeMenu();
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    
+    input.onchange = function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const importedData = JSON.parse(event.target.result);
+                    if (Array.isArray(importedData)) {
+                        if (confirm('¿Deseas REEMPLAZAR todas las facturas actuales o AÑADIR las importadas?\\n\\nOK = Añadir\\nCancelar = Reemplazar')) {
+                            invoices = invoices.concat(importedData);
+                        } else {
+                            invoices = importedData;
+                        }
+                        localStorage.setItem('invoices', JSON.stringify(invoices));
+                        renderInvoices();
+                        alert('✅ Datos importados correctamente: ' + importedData.length + ' facturas');
+                    } else {
+                        alert('❌ Formato de archivo inválido');
+                    }
+                } catch (error) {
+                    alert('❌ Error al importar: archivo corrupto');
+                }
+            };
+            reader.readAsText(file);
+        }
+    };
+    
+    input.click();
+}
+
+function deleteAllData() {
+    closeMenu();
+    if (confirm('⚠️ ¿ELIMINAR TODAS LAS FACTURAS?\\n\\nEsta acción NO se puede deshacer.\\n\\nTe recomendamos exportar tus datos primero.')) {
+        if (confirm('¿Estás COMPLETAMENTE seguro?\\n\\nSe eliminarán ' + invoices.length + ' facturas.')) {
+            localStorage.removeItem('invoices');
+            invoices = [];
+            renderInvoices();
+            alert('✅ Todas las facturas han sido eliminadas');
+        }
     }
 }
 
