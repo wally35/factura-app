@@ -7,8 +7,8 @@ let modoManual = false;
 const GEMINI_API_KEY = 'AIzaSyCKdb9YfWi23ZraEQ6PE_MgyEaw9x1s4g8';
 
 // Google Drive API
-const GOOGLE_CLIENT_ID = 'TU_CLIENT_ID_AQUI.apps.googleusercontent.com';
-const GOOGLE_API_KEY = 'TU_API_KEY_AQUI';
+const GOOGLE_CLIENT_ID = 'TU_CLIENT_ID_AQUI.apps.googleusercontent.com'; // ⬅️ CAMBIAR ESTO
+const GOOGLE_API_KEY = 'TU_API_KEY_AQUI'; // ⬅️ CAMBIAR ESTO (opcional)
 const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/drive.file';
 
 let googleAccessToken = null;
@@ -131,30 +131,57 @@ photoGallery.addEventListener('change', async function(e) {
 async function procesarFoto(file) {
     if (!file) return;
     
+    // Comprimir imagen primero
     const reader = new FileReader();
     reader.onload = async function(e) {
-        currentPhoto = e.target.result;
-        photoPreview.src = currentPhoto;
-        photoPreview.style.display = 'block';
-        
-        // Mostrar mensaje de análisis
-        const mensaje = document.createElement('div');
-        mensaje.id = 'loading-ia';
-        mensaje.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); color: white; padding: 20px 30px; border-radius: 10px; z-index: 10000; text-align: center;';
-        mensaje.innerHTML = '🤖 Analizando factura con IA...<br><small>Esto puede tardar unos segundos</small>';
-        document.body.appendChild(mensaje);
-        
-        try {
-            const base64Image = currentPhoto.split(',')[1];
+        // Crear imagen para comprimir
+        const img = new Image();
+        img.onload = async function() {
+            // Comprimir a máximo 800px
+            let width = img.width;
+            let height = img.height;
+            const maxSize = 800;
             
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{
-                        parts: [
-                            {
-                                text: `Analiza esta factura/ticket y extrae EXACTAMENTE estos datos en formato JSON.
+            if (width > height && width > maxSize) {
+                height = (height * maxSize) / width;
+                width = maxSize;
+            } else if (height > maxSize) {
+                width = (width * maxSize) / height;
+                height = maxSize;
+            }
+            
+            // Crear canvas para comprimir
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // Convertir a base64 comprimido
+            currentPhoto = canvas.toDataURL('image/jpeg', 0.7);
+            photoPreview.src = currentPhoto;
+            photoPreview.style.display = 'block';
+            
+            // Mostrar mensaje de análisis
+            const mensaje = document.createElement('div');
+            mensaje.id = 'loading-ia';
+            mensaje.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); color: white; padding: 20px 30px; border-radius: 10px; z-index: 10000; text-align: center;';
+            mensaje.innerHTML = '🤖 Analizando factura con IA...<br><small>Esto puede tardar unos segundos</small>';
+            document.body.appendChild(mensaje);
+            
+            try {
+                const base64Image = currentPhoto.split(',')[1];
+                
+                console.log('📤 Enviando imagen a Gemini... Tamaño:', Math.round(base64Image.length / 1024), 'KB');
+                
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [
+                                {
+                                    text: `Analiza esta factura/ticket y extrae EXACTAMENTE estos datos en formato JSON.
 
 IMPORTANTE: Tickets de supermercado, gasolineras, restaurantes, etc. también son válidos.
 
@@ -175,90 +202,104 @@ Responde SOLO con JSON (sin markdown):
 }
 
 Si no encuentras algo, usa null o [].`
-                            },
-                            {
-                                inline_data: {
-                                    mime_type: 'image/jpeg',
-                                    data: base64Image
+                                },
+                                {
+                                    inline_data: {
+                                        mime_type: 'image/jpeg',
+                                        data: base64Image
+                                    }
                                 }
-                            }
-                        ]
-                    }],
-                    generationConfig: {
-                        temperature: 0.1,
-                        maxOutputTokens: 500,
-                    }
-                })
-            });
-            
-            const loadingMsg = document.getElementById('loading-ia');
-            if (loadingMsg) document.body.removeChild(loadingMsg);
-            
-            if (!response.ok) throw new Error(`Error: ${response.status}`);
-            
-            const data = await response.json();
-            
-            if (data.candidates && data.candidates[0].content) {
-                const texto = data.candidates[0].content.parts[0].text;
-                let jsonText = texto.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-                const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
-                if (jsonMatch) jsonText = jsonMatch[0];
+                            ]
+                        }],
+                        generationConfig: {
+                            temperature: 0.1,
+                            maxOutputTokens: 500,
+                        }
+                    })
+                });
                 
-                const datosFactura = JSON.parse(jsonText);
-                let datosDetectados = [];
+                const loadingMsg = document.getElementById('loading-ia');
+                if (loadingMsg) document.body.removeChild(loadingMsg);
                 
-                // Rellenar campos
-                if (datosFactura.total) {
-                    document.getElementById('importe').value = String(datosFactura.total).replace(',', '.');
-                    datosDetectados.push('💰 Total: ' + datosFactura.total + '€');
+                console.log('📥 Respuesta recibida:', response.status);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('❌ Error de API:', errorText);
+                    throw new Error(`Error: ${response.status}`);
                 }
                 
-                if (datosFactura.fecha) {
-                    const partes = datosFactura.fecha.split('/');
-                    if (partes.length === 3) {
-                        fechaCalendario.value = `${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`;
-                        datosDetectados.push('📅 Fecha: ' + datosFactura.fecha);
-                    }
-                }
+                const data = await response.json();
+                console.log('✅ Datos recibidos:', data);
                 
-                if (datosFactura.comercio) {
-                    document.getElementById('comercio').value = datosFactura.comercio;
-                    datosDetectados.push('🏪 Comercio: ' + datosFactura.comercio);
-                }
-                
-                if (datosFactura.articulos && datosFactura.articulos.length > 0) {
-                    document.getElementById('articulos').value = datosFactura.articulos.join(', ');
-                    datosDetectados.push('📦 Artículos detectados');
-                }
-                
-                if (datosFactura.categoria) {
-                    document.getElementById('categoria').value = datosFactura.categoria;
+                if (data.candidates && data.candidates[0].content) {
+                    const texto = data.candidates[0].content.parts[0].text;
+                    let jsonText = texto.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+                    const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) jsonText = jsonMatch[0];
                     
-                    // Garantía automática
-                    if (datosFactura.categoria === 'tecnologia' || datosFactura.categoria === 'electrodomesticos') {
-                        document.getElementById('garantia-tipo').value = '3';
-                        datosDetectados.push('✅ Garantía: 3 años 🇪🇸');
+                    const datosFactura = JSON.parse(jsonText);
+                    let datosDetectados = [];
+                    
+                    // Rellenar campos
+                    if (datosFactura.total) {
+                        document.getElementById('importe').value = String(datosFactura.total).replace(',', '.');
+                        datosDetectados.push('💰 Total: ' + datosFactura.total + '€');
                     }
+                    
+                    if (datosFactura.fecha) {
+                        const partes = datosFactura.fecha.split('/');
+                        if (partes.length === 3) {
+                            fechaCalendario.value = `${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`;
+                            datosDetectados.push('📅 Fecha: ' + datosFactura.fecha);
+                        }
+                    }
+                    
+                    if (datosFactura.comercio) {
+                        document.getElementById('comercio').value = datosFactura.comercio;
+                        datosDetectados.push('🏪 Comercio: ' + datosFactura.comercio);
+                    }
+                    
+                    if (datosFactura.articulos && datosFactura.articulos.length > 0) {
+                        document.getElementById('articulos').value = datosFactura.articulos.join(', ');
+                        datosDetectados.push('📦 Artículos detectados');
+                    }
+                    
+                    if (datosFactura.categoria) {
+                        document.getElementById('categoria').value = datosFactura.categoria;
+                        
+                        // Garantía automática
+                        if (datosFactura.categoria === 'tecnologia' || datosFactura.categoria === 'electrodomesticos') {
+                            document.getElementById('garantia-tipo').value = '3';
+                            datosDetectados.push('✅ Garantía: 3 años 🇪🇸');
+                        }
+                    }
+                    
+                    if (datosDetectados.length > 0) {
+                        alert('✅ Datos detectados:\n\n' + datosDetectados.join('\n'));
+                    } else {
+                        alert('⚠️ No se detectaron datos. Introdúcelos manualmente.');
+                    }
+                } else {
+                    console.error('⚠️ Respuesta sin contenido:', data);
+                    alert('⚠️ No se pudo leer la respuesta de la IA.');
                 }
                 
-                if (datosDetectados.length > 0) {
-                    alert('✅ Datos detectados:\n\n' + datosDetectados.join('\n'));
-                } else {
-                    alert('⚠️ No se detectaron datos. Introdúcelos manualmente.');
-                }
+            } catch (error) {
+                const loadingMsg = document.getElementById('loading-ia');
+                if (loadingMsg) document.body.removeChild(loadingMsg);
+                
+                console.error('❌ Error completo:', error);
+                alert('❌ Error al analizar: ' + error.message + '\n\nIntroduce los datos manualmente.');
             }
-            
-        } catch (error) {
-            const loadingMsg = document.getElementById('loading-ia');
-            if (loadingMsg) document.body.removeChild(loadingMsg);
-            
-            console.error('Error:', error);
-            alert('❌ Error al analizar. Introduce los datos manualmente.');
-        }
+        };
+        
+        img.src = e.target.result;
     };
     
     reader.readAsDataURL(file);
 }
+
 // Guardar factura
 form.addEventListener('submit', function(e) {
     e.preventDefault();
@@ -330,7 +371,7 @@ form.addEventListener('submit', function(e) {
         invoices.unshift(invoice);
         localStorage.setItem('invoices', JSON.stringify(invoices));
         
-        // Limpiar
+        // Limpiar formulario
         form.reset();
         photoPreview.style.display = 'none';
         currentPhoto = null;
@@ -340,10 +381,11 @@ form.addEventListener('submit', function(e) {
         alert('✅ Factura guardada');
         
     } catch (error) {
-        console.error(error);
-        alert('❌ Error al guardar');
+        console.error('Error al guardar:', error);
+        alert('❌ Error al guardar la factura. Revisa los datos.');
     }
 });
+
 // Mostrar facturas
 function renderInvoices(searchTerm = '') {
     count.textContent = invoices.length;
@@ -351,19 +393,19 @@ function renderInvoices(searchTerm = '') {
     let facturasAMostrar = invoices;
     if (searchTerm) {
         facturasAMostrar = invoices.filter(function(invoice) {
-            const comercio = (invoice.comercio || '').toLowerCase();
-            const articulos = (invoice.articulos || []).join(' ').toLowerCase();
-            const concepto = (invoice.concepto || '').toLowerCase();
-            return comercio.includes(searchTerm) || articulos.includes(searchTerm) || concepto.includes(searchTerm);
+            const texto = [
+                invoice.comercio || '',
+                (invoice.articulos || []).join(' '),
+                invoice.concepto || ''
+            ].join(' ').toLowerCase();
+            return texto.includes(searchTerm);
         });
     }
     
     if (facturasAMostrar.length === 0) {
-        if (searchTerm) {
-            invoiceList.innerHTML = '<div class="empty-state">No se encontraron facturas con "' + searchTerm + '"</div>';
-        } else {
-            invoiceList.innerHTML = '<div class="empty-state">No hay facturas guardadas.<br>¡Añade tu primera factura!</div>';
-        }
+        invoiceList.innerHTML = '<div class="empty-state">' + 
+            (searchTerm ? `No se encontraron facturas con "${searchTerm}"` : 'No hay facturas.<br>¡Añade tu primera factura!') +
+            '</div>';
         checkWarrantyWarnings();
         return;
     }
@@ -371,106 +413,74 @@ function renderInvoices(searchTerm = '') {
     invoiceList.innerHTML = facturasAMostrar.map(function(invoice) {
         const comercio = invoice.comercio || '';
         const articulos = invoice.articulos || [];
-        const concepto = invoice.concepto || '';
         
         let displayText = comercio;
-        
-        // Mostrar artículos
         let articulosHTML = '';
-        if (articulos.length > 0) {
-            if (articulos.length === 1) {
-                displayText = comercio + ' - ' + articulos[0];
-            } else {
-                displayText = comercio;
-                articulosHTML = '<div class="productos-toggle" onclick="toggleProductos(' + invoice.id + ')">' +
-                    '📦 ' + articulos.length + ' productos ▼' +
-                '</div>' +
-                '<div class="productos-expandido" id="productos-' + invoice.id + '" style="display: none;">' +
-                    '<ul>' + articulos.map(art => '<li>• ' + art + '</li>').join('') + '</ul>' +
-                '</div>';
-            }
-        } else if (concepto) {
-            displayText = concepto;
+        
+        if (articulos.length === 1) {
+            displayText = comercio + ' - ' + articulos[0];
+        } else if (articulos.length > 1) {
+            articulosHTML = `<div class="productos-toggle" onclick="toggleProductos(${invoice.id})">📦 ${articulos.length} productos ▼</div>` +
+                `<div class="productos-expandido" id="productos-${invoice.id}" style="display: none;">` +
+                `<ul>${articulos.map(art => '<li>• ' + art + '</li>').join('')}</ul></div>`;
         }
         
         // Garantías
         let garantiaHTML = '';
         if (invoice.garantia) {
             const garantiaFecha = new Date(invoice.garantia);
-            const hoy = new Date();
-            const diasRestantes = Math.floor((garantiaFecha - hoy) / (1000 * 60 * 60 * 24));
+            const dias = Math.floor((garantiaFecha - new Date()) / (1000 * 60 * 60 * 24));
             
-            let garantiaColor = '#666';
-            let garantiaIcono = '⏰';
-            
-            if (diasRestantes < 0) {
-                garantiaColor = '#999';
-                garantiaIcono = '❌';
-                garantiaHTML = '<div style="color: ' + garantiaColor + '; font-size: 0.9em; margin-top: 5px;">' + garantiaIcono + ' Garantía legal caducada</div>';
-            } else if (diasRestantes < 90) {
-                garantiaColor = '#ff6b6b';
-                garantiaIcono = '⚠️';
-                garantiaHTML = '<div style="color: ' + garantiaColor + '; font-size: 0.9em; margin-top: 5px;">' + garantiaIcono + ' Garantía legal: ' + formatearFecha(invoice.garantia) + ' (' + diasRestantes + ' días)</div>';
+            if (dias < 0) {
+                garantiaHTML = '<div style="color: #999; font-size: 0.9em; margin-top: 5px;">❌ Garantía caducada</div>';
+            } else if (dias < 90) {
+                garantiaHTML = `<div style="color: #ff6b6b; font-size: 0.9em; margin-top: 5px;">⚠️ Garantía: ${formatearFecha(invoice.garantia)} (${dias} días)</div>`;
             } else {
-                garantiaHTML = '<div style="color: ' + garantiaColor + '; font-size: 0.9em; margin-top: 5px;">' + garantiaIcono + ' Garantía legal: ' + formatearFecha(invoice.garantia) + ' 🇪🇸</div>';
+                garantiaHTML = `<div style="color: #666; font-size: 0.9em; margin-top: 5px;">⏰ Garantía: ${formatearFecha(invoice.garantia)} 🇪🇸</div>`;
             }
         }
         
-        // Garantía extendida
         if (invoice.garantiaExtendida && invoice.garantiaExtVence) {
-            const extFecha = new Date(invoice.garantiaExtVence);
-            const hoy = new Date();
-            const diasRestantes = Math.floor((extFecha - hoy) / (1000 * 60 * 60 * 24));
-            
-            if (diasRestantes >= 0) {
-                garantiaHTML += '<div style="color: #4facfe; font-size: 0.9em; margin-top: 3px;">🛡️ ' + invoice.garantiaExtendida + ': ' + formatearFecha(invoice.garantiaExtVence) + '</div>';
+            const dias = Math.floor((new Date(invoice.garantiaExtVence) - new Date()) / (1000 * 60 * 60 * 24));
+            if (dias >= 0) {
+                garantiaHTML += `<div style="color: #4facfe; font-size: 0.9em; margin-top: 3px;">🛡️ ${invoice.garantiaExtendida}: ${formatearFecha(invoice.garantiaExtVence)}</div>`;
             }
         }
         
         // Imagen
         let imagenHTML = '';
         if (invoice.photo) {
-            imagenHTML = '<img src="' + invoice.photo + '" alt="Factura" class="invoice-image-preview" onclick="toggleImage(' + invoice.id + ')" id="img-preview-' + invoice.id + '">' +
-                        '<img src="' + invoice.photo + '" alt="Factura completa" class="invoice-image-full" onclick="toggleImage(' + invoice.id + ')" id="img-full-' + invoice.id + '" style="display: none;">';
+            imagenHTML = `<img src="${invoice.photo}" alt="Factura" class="invoice-image-preview" onclick="toggleImage(${invoice.id})" id="img-preview-${invoice.id}">` +
+                `<img src="${invoice.photo}" alt="Factura" class="invoice-image-full" onclick="toggleImage(${invoice.id})" id="img-full-${invoice.id}" style="display: none;">`;
         }
         
-        return '<div class="invoice-item">' +
-            '<div class="invoice-header">' +
-                '<div>' +
-                    '<div class="invoice-amount">' + invoice.importe.toFixed(2) + '€</div>' +
-                    '<div class="invoice-details">' +
-                        getCategoryEmoji(invoice.categoria) + ' ' + (invoice.categoria || 'Sin categoría') + ' • ' + invoice.fecha +
-                    '</div>' +
-                '</div>' +
-                '<button class="btn-delete" onclick="deleteInvoice(' + invoice.id + ')">🗑️</button>' +
-            '</div>' +
-            '<div><strong>' + displayText + '</strong></div>' +
-            articulosHTML +
-            garantiaHTML +
-            imagenHTML +
-        '</div>';
+        return `<div class="invoice-item">
+            <div class="invoice-header">
+                <div>
+                    <div class="invoice-amount">${invoice.importe.toFixed(2)}€</div>
+                    <div class="invoice-details">${getCategoryEmoji(invoice.categoria)} ${invoice.categoria || 'Sin categoría'} • ${invoice.fecha}</div>
+                </div>
+                <button class="btn-delete" onclick="deleteInvoice(${invoice.id})">🗑️</button>
+            </div>
+            <div><strong>${displayText}</strong></div>
+            ${articulosHTML}
+            ${garantiaHTML}
+            ${imagenHTML}
+        </div>`;
     }).join('');
     
     checkWarrantyWarnings();
 }
 
-// Toggle productos
+// Toggle productos/imagen
 function toggleProductos(id) {
-    const productosDiv = document.getElementById('productos-' + id);
-    if (productosDiv) {
-        if (productosDiv.style.display === 'none') {
-            productosDiv.style.display = 'block';
-        } else {
-            productosDiv.style.display = 'none';
-        }
-    }
+    const div = document.getElementById('productos-' + id);
+    if (div) div.style.display = div.style.display === 'none' ? 'block' : 'none';
 }
 
-// Toggle imagen
 function toggleImage(id) {
     const preview = document.getElementById('img-preview-' + id);
     const full = document.getElementById('img-full-' + id);
-    
     if (preview && full) {
         if (preview.style.display === 'none') {
             preview.style.display = 'block';
@@ -485,76 +495,62 @@ function toggleImage(id) {
 // Eliminar factura
 function deleteInvoice(id) {
     if (confirm('¿Eliminar esta factura?')) {
-        invoices = invoices.filter(function(inv) { 
-            return inv.id !== id; 
-        });
+        invoices = invoices.filter(inv => inv.id !== id);
         localStorage.setItem('invoices', JSON.stringify(invoices));
         renderInvoices();
     }
 }
+
 // Funciones del menú
 function showAbout() {
     closeMenu();
     alert(`📱 DocuScan Pro v2.0
 
-Aplicación de gestión de facturas con IA
+Gestión de facturas con IA
 
-✨ Características:
-- Escaneo automático con Gemini AI
-- Detección de múltiples productos
-- Garantías automáticas según ley española
-- Garantías extendidas (AppleCare, etc.)
-- Búsqueda inteligente
-- Almacenamiento local seguro
+✨ Funciones:
+• OCR automático con Gemini AI
+• Detección de productos múltiples
+• Garantías según ley española
+• Avisos de vencimiento
+• Exportar/Importar datos
 
-👨‍💻 Desarrollado por David
-🏢 GPInformático
-📧 Contacto: gpinformatico.com
-
-© 2025 Todos los derechos reservados`);
+👨‍💻 David - GPInformático
+© 2025`);
 }
 
 function showLegal() {
     closeMenu();
     alert(`⚖️ AVISO LEGAL
 
-RESPONSABILIDAD
-Esta aplicación se proporciona "tal cual" sin garantías. El usuario es responsable de verificar la exactitud de los datos detectados por la IA.
+PRIVACIDAD:
+• Datos almacenados localmente
+• Procesamiento con Gemini AI
+• No se envía info a servidores propios
 
-PRIVACIDAD
-- Todos los datos se almacenan localmente en tu dispositivo
-- No se envía información a servidores externos
-- Las imágenes de facturas se procesan mediante Gemini AI
-- Puedes eliminar todos tus datos en cualquier momento
+GARANTÍAS:
+Info orientativa. Consulta legislación vigente.
 
-GARANTÍAS
-La información sobre garantías legales es orientativa. Consulta la legislación vigente y los términos específicos de cada producto.
+España: 3 años para electrónica/electrodomésticos
 
-LEY DE GARANTÍAS EN ESPAÑA
-Según el Real Decreto Legislativo 1/2007:
-- Productos de consumo: mínimo 3 años
-- Electrodomésticos y tecnología: 3 años recomendados
-
-Para más información: gpinformatico.com`);
+gpinformatico.com`);
 }
 
 function exportData() {
     closeMenu();
     if (invoices.length === 0) {
-        alert('❌ No hay facturas para exportar');
+        alert('❌ No hay facturas');
         return;
     }
     
-    const dataStr = JSON.stringify(invoices, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
+    const blob = new Blob([JSON.stringify(invoices, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'facturas_backup_' + new Date().toISOString().split('T')[0] + '.json';
+    link.download = 'facturas_' + new Date().toISOString().split('T')[0] + '.json';
     link.click();
     URL.revokeObjectURL(url);
-    
-    alert('✅ Datos exportados correctamente');
+    alert('✅ Datos exportados');
 }
 
 function importData() {
@@ -569,38 +565,37 @@ function importData() {
             const reader = new FileReader();
             reader.onload = function(event) {
                 try {
-                    const importedData = JSON.parse(event.target.result);
-                    if (Array.isArray(importedData)) {
-                        if (confirm('¿Deseas REEMPLAZAR todas las facturas actuales o AÑADIR las importadas?\n\nOK = Añadir\nCancelar = Reemplazar')) {
-                            invoices = invoices.concat(importedData);
+                    const data = JSON.parse(event.target.result);
+                    if (Array.isArray(data)) {
+                        if (confirm('¿Añadir facturas (OK) o Reemplazar todas (Cancelar)?')) {
+                            invoices = invoices.concat(data);
                         } else {
-                            invoices = importedData;
+                            invoices = data;
                         }
                         localStorage.setItem('invoices', JSON.stringify(invoices));
                         renderInvoices();
-                        alert('✅ Datos importados correctamente: ' + importedData.length + ' facturas');
+                        alert('✅ Importadas: ' + data.length + ' facturas');
                     } else {
-                        alert('❌ Formato de archivo inválido');
+                        alert('❌ Formato inválido');
                     }
                 } catch (error) {
-                    alert('❌ Error al importar: archivo corrupto');
+                    alert('❌ Error al importar');
                 }
             };
             reader.readAsText(file);
         }
     };
-    
     input.click();
 }
 
 function deleteAllData() {
     closeMenu();
-    if (confirm('⚠️ ¿ELIMINAR TODAS LAS FACTURAS?\n\nEsta acción NO se puede deshacer.\n\nTe recomendamos exportar tus datos primero.')) {
-        if (confirm('¿Estás COMPLETAMENTE seguro?\n\nSe eliminarán ' + invoices.length + ' facturas.')) {
+    if (confirm(`⚠️ ¿ELIMINAR ${invoices.length} facturas?\n\nNo se puede deshacer.`)) {
+        if (confirm('¿Completamente seguro?')) {
             localStorage.removeItem('invoices');
             invoices = [];
             renderInvoices();
-            alert('✅ Todas las facturas han sido eliminadas');
+            alert('✅ Todo eliminado');
         }
     }
 }
@@ -619,36 +614,29 @@ function checkWarrantyWarnings() {
     
     invoices.forEach(function(invoice) {
         if (invoice.garantia) {
-            const garantiaFecha = new Date(invoice.garantia);
-            const diasRestantes = Math.floor((garantiaFecha - hoy) / (1000 * 60 * 60 * 24));
-            
-            if (diasRestantes >= 0 && diasRestantes <= 90) {
+            const dias = Math.floor((new Date(invoice.garantia) - hoy) / (1000 * 60 * 60 * 24));
+            if (dias >= 0 && dias <= 90) {
                 warnings.push({
-                    id: invoice.id,
                     tipo: 'legal',
                     comercio: invoice.comercio,
                     articulos: invoice.articulos,
-                    dias: diasRestantes,
+                    dias: dias,
                     fecha: invoice.garantia,
-                    urgente: diasRestantes <= 30
+                    urgente: dias <= 30
                 });
             }
         }
         
         if (invoice.garantiaExtendida && invoice.garantiaExtVence) {
-            const extFecha = new Date(invoice.garantiaExtVence);
-            const diasRestantes = Math.floor((extFecha - hoy) / (1000 * 60 * 60 * 24));
-            
-            if (diasRestantes >= 0 && diasRestantes <= 90) {
+            const dias = Math.floor((new Date(invoice.garantiaExtVence) - hoy) / (1000 * 60 * 60 * 24));
+            if (dias >= 0 && dias <= 90) {
                 warnings.push({
-                    id: invoice.id,
                     tipo: 'extendida',
                     nombre: invoice.garantiaExtendida,
                     comercio: invoice.comercio,
                     articulos: invoice.articulos,
-                    dias: diasRestantes,
-                    fecha: invoice.garantiaExtVence,
-                    urgente: diasRestantes <= 30
+                    dias: dias,
+                    fecha: invoice.garantiaExtVence
                 });
             }
         }
@@ -659,56 +647,23 @@ function checkWarrantyWarnings() {
         warningBadge.style.display = 'block';
         warningCount.textContent = warnings.length;
         
-        warnings.sort(function(a, b) {
-            return a.dias - b.dias;
-        });
+        warnings.sort((a, b) => a.dias - b.dias);
         
-        warningsList.innerHTML = warnings.map(function(warning) {
-            const articulo = warning.articulos && warning.articulos.length > 0 
-                ? warning.articulos[0] 
-                : warning.comercio;
+        warningsList.innerHTML = warnings.map(function(w) {
+            const articulo = (w.articulos && w.articulos[0]) || w.comercio;
+            const urgencyClass = w.dias <= 30 ? 'urgent' : 'moderate';
+            const icon = w.dias <= 30 ? '🔴' : '🟡';
+            const urgencyText = w.dias <= 7 ? '¡MUY URGENTE!' : w.dias <= 30 ? 'URGENTE' : 'Próximamente';
+            const tipo = w.tipo === 'legal' ? 'Garantía Legal 🇪🇸' : w.nombre;
             
-            let urgencyClass = '';
-            let icon = '⚠️';
-            let urgencyText = '';
-            
-            if (warning.dias <= 7) {
-                urgencyClass = 'urgent';
-                icon = '🔴';
-                urgencyText = '¡MUY URGENTE!';
-            } else if (warning.dias <= 30) {
-                urgencyClass = 'urgent';
-                icon = '🔴';
-                urgencyText = 'URGENTE';
-            } else if (warning.dias <= 60) {
-                urgencyClass = 'moderate';
-                icon = '🟡';
-                urgencyText = 'Próximamente';
-            } else {
-                urgencyClass = 'moderate';
-                icon = '🟡';
-                urgencyText = 'Aviso';
-            }
-            
-            const tipoGarantia = warning.tipo === 'legal' 
-                ? 'Garantía Legal 🇪🇸' 
-                : warning.nombre;
-            
-            return '<div class="warning-item ' + urgencyClass + '">' +
-                '<div class="warning-item-info">' +
-                    '<div class="warning-item-title">' +
-                        icon + ' ' + urgencyText + ' - ' + articulo +
-                    '</div>' +
-                    '<div class="warning-item-details">' +
-                        tipoGarantia + ' • Vence: ' + formatearFecha(warning.fecha) +
-                    '</div>' +
-                '</div>' +
-                '<div class="warning-item-days">' +
-                    warning.dias + '<br><small style="font-size: 12px;">días</small>' +
-                '</div>' +
-            '</div>';
+            return `<div class="warning-item ${urgencyClass}">
+                <div class="warning-item-info">
+                    <div class="warning-item-title">${icon} ${urgencyText} - ${articulo}</div>
+                    <div class="warning-item-details">${tipo} • Vence: ${formatearFecha(w.fecha)}</div>
+                </div>
+                <div class="warning-item-days">${w.dias}<br><small style="font-size: 12px;">días</small></div>
+            </div>`;
         }).join('');
-        
     } else {
         warningsSection.style.display = 'none';
         warningBadge.style.display = 'none';
@@ -718,21 +673,10 @@ function checkWarrantyWarnings() {
 // Utilidades
 function getCategoryEmoji(category) {
     const emojis = {
-        'alimentacion': '🍔',
-        'tecnologia': '📱',
-        'electrodomesticos': '⚡',
-        'ropa': '👕',
-        'hogar': '🏠',
-        'transporte': '🚗',
-        'suministros': '💡',
-        'salud': '🏥',
-        'ocio': '🎮',
-        'deportes': '🏋️',
-        'educacion': '📚',
-        'mascotas': '🐾',
-        'belleza': '💈',
-        'servicios': '🔧',
-        'otros': '📦'
+        'alimentacion': '🍔', 'tecnologia': '📱', 'electrodomesticos': '⚡',
+        'ropa': '👕', 'hogar': '🏠', 'transporte': '🚗', 'suministros': '💡',
+        'salud': '🏥', 'ocio': '🎮', 'deportes': '🏋️', 'educacion': '📚',
+        'mascotas': '🐾', 'belleza': '💈', 'servicios': '🔧', 'otros': '📦'
     };
     return emojis[category] || '📄';
 }
@@ -742,10 +686,9 @@ function formatearFecha(fechaISO) {
     const fecha = new Date(fechaISO);
     const dia = String(fecha.getDate()).padStart(2, '0');
     const mes = String(fecha.getMonth() + 1).padStart(2, '0');
-    const año = fecha.getFullYear();
-    return dia + '/' + mes + '/' + año;
+    return `${dia}/${mes}/${fecha.getFullYear()}`;
 }
 
-// Cargar facturas al inicio
+// Inicializar
 renderInvoices();
 checkWarrantyWarnings();
