@@ -3,9 +3,6 @@ let invoices = JSON.parse(localStorage.getItem('invoices')) || [];
 let currentPhoto = null;
 let modoManual = false;
 
-console.log('🚀 Aplicación iniciada');
-console.log('📦 Facturas cargadas:', invoices.length);
-
 // Gemini API Key
 const GEMINI_API_KEY = 'AIzaSyCKdb9YfWi23ZraEQ6PE_MgyEaw9x1s4g8';
 
@@ -118,7 +115,7 @@ async function procesarFoto(file) {
                 const base64Image = currentPhoto.split(',')[1];
                 
                 // Llamar a Gemini AI con prompt mejorado
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`, {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -289,78 +286,55 @@ async function procesarFoto(file) {
 form.addEventListener('submit', function(e) {
     e.preventDefault();
     
-    console.log('📝 Guardando factura...');
-    
-    try {
-        // Obtener fecha
-        let fecha;
-        let fechaISO;
-        if (modoManual) {
-            fecha = fechaManual.value;
-            if (!fecha || fecha.length < 10) {
-                alert('❌ La fecha no es válida');
-                return;
-            }
-            // Convertir dd/mm/yyyy a ISO
-            const partes = fecha.split('/');
-            fechaISO = partes[2] + '-' + partes[1] + '-' + partes[0];
-        } else {
-            fechaISO = fechaCalendario.value;
-            if (!fechaISO) {
-                alert('❌ Por favor selecciona una fecha');
-                return;
-            }
-            const fechaObj = new Date(fechaISO);
-            const dia = String(fechaObj.getDate()).padStart(2, '0');
-            const mes = String(fechaObj.getMonth() + 1).padStart(2, '0');
-            const año = fechaObj.getFullYear();
-            fecha = dia + '/' + mes + '/' + año;
-        }
-        
-        // Calcular garantía
-        let garantiaHasta = '';
-        const garantiaTipo = document.getElementById('garantia-tipo').value;
-        
-        if (garantiaTipo === 'custom') {
-            const garantiaCustomInput = document.getElementById('garantia-custom-date');
-            if (garantiaCustomInput && garantiaCustomInput.value) {
-                garantiaHasta = garantiaCustomInput.value;
-            }
-        } else if (garantiaTipo !== '') {
-            garantiaHasta = calcularGarantia(fechaISO, garantiaTipo);
-        }
-        
-        const invoice = {
-            id: Date.now(),
-            fecha: fecha,
-            importe: parseFloat(document.getElementById('importe').value),
-            concepto: document.getElementById('concepto').value,
-            categoria: document.getElementById('categoria').value,
-            garantia: garantiaHasta,
-            garantiaTipo: garantiaTipo,
-            photo: currentPhoto,
-            timestamp: new Date().toISOString()
-        };
-        
-        console.log('Factura creada:', invoice);
-        
-        invoices.unshift(invoice);
-        localStorage.setItem('invoices', JSON.stringify(invoices));
-        
-        console.log('✅ Guardada en localStorage. Total facturas:', invoices.length);
-        
-        form.reset();
-        photoPreview.style.display = 'none';
-        currentPhoto = null;
-        toggleGarantiaPersonalizada();
-        
-        renderInvoices();
-        alert('✅ Factura guardada correctamente!\n\n' + invoice.concepto + '\n' + invoice.importe.toFixed(2) + '€');
-        
-    } catch (error) {
-        console.error('❌ Error al guardar:', error);
-        alert('❌ Error al guardar la factura:\n' + error.message);
+    // Obtener fecha
+    let fecha;
+    let fechaISO;
+    if (modoManual) {
+        fecha = fechaManual.value;
+        // Convertir dd/mm/yyyy a ISO
+        const partes = fecha.split('/');
+        fechaISO = partes[2] + '-' + partes[1] + '-' + partes[0];
+    } else {
+        fechaISO = fechaCalendario.value;
+        const fechaObj = new Date(fechaISO);
+        const dia = String(fechaObj.getDate()).padStart(2, '0');
+        const mes = String(fechaObj.getMonth() + 1).padStart(2, '0');
+        const año = fechaObj.getFullYear();
+        fecha = dia + '/' + mes + '/' + año;
     }
+    
+    // Calcular garantía
+    let garantiaHasta = '';
+    const garantiaTipo = document.getElementById('garantia-tipo').value;
+    
+    if (garantiaTipo === 'custom') {
+        garantiaHasta = document.getElementById('garantia-custom').value;
+    } else if (garantiaTipo !== '') {
+        garantiaHasta = calcularGarantia(fechaISO, garantiaTipo);
+    }
+    
+    const invoice = {
+        id: Date.now(),
+        fecha: fecha,
+        importe: parseFloat(document.getElementById('importe').value),
+        concepto: document.getElementById('concepto').value,
+        categoria: document.getElementById('categoria').value,
+        garantia: garantiaHasta,
+        garantiaTipo: garantiaTipo,
+        photo: currentPhoto,
+        timestamp: new Date().toISOString()
+    };
+    
+    invoices.unshift(invoice);
+    localStorage.setItem('invoices', JSON.stringify(invoices));
+    
+    form.reset();
+    photoPreview.style.display = 'none';
+    currentPhoto = null;
+    toggleGarantiaPersonalizada();
+    
+    renderInvoices();
+    alert('✅ Factura guardada correctamente');
 });
 
 // Mostrar facturas
