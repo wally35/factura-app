@@ -1,44 +1,40 @@
-// Base de datos local con verificación mejorada
+// 🔒 SISTEMA DE ALMACENAMIENTO ROBUSTO
 let invoices = [];
 let currentPhoto = null;
 let modoManual = false;
 
-// Cargar facturas con validación
+// ⏰ CONTROL DE LÍMITE DE IA (evitar 429 errors)
+let ultimaPeticionIA = 0;
+const TIEMPO_MINIMO_ENTRE_PETICIONES = 5000; // 5 segundos entre peticiones
+
+// 💾 CARGAR FACTURAS
 function cargarFacturas() {
     try {
         const stored = localStorage.getItem('invoices');
         if (stored) {
             invoices = JSON.parse(stored);
-            console.log('✅ Facturas cargadas:', invoices.length);
+            console.log('✅ Cargadas ' + invoices.length + ' facturas');
         } else {
             invoices = [];
-            console.log('📋 No hay facturas previas');
+            console.log('📋 Sin facturas previas');
         }
     } catch (e) {
-        console.error('❌ Error cargando facturas:', e);
+        console.error('❌ Error cargando:', e);
         invoices = [];
     }
 }
 
-// Guardar facturas con verificación
+// 💾 GUARDAR FACTURAS
 function guardarFacturas() {
     try {
         const jsonString = JSON.stringify(invoices);
-        const sizeInMB = (jsonString.length / (1024 * 1024)).toFixed(2);
-        console.log('💾 Guardando', invoices.length, 'facturas. Tamaño:', sizeInMB, 'MB');
-        
-        // Verificar límite de localStorage (5MB típico)
-        if (sizeInMB > 4.5) {
-            alert('⚠️ Advertencia: Alcanzando límite de almacenamiento (' + sizeInMB + 'MB).\nConsidera eliminar facturas antiguas.');
-        }
-        
         localStorage.setItem('invoices', jsonString);
-        console.log('✅ Facturas guardadas correctamente');
+        console.log('✅ Guardadas ' + invoices.length + ' facturas');
         return true;
     } catch (e) {
         console.error('❌ Error guardando:', e);
         if (e.name === 'QuotaExceededError') {
-            alert('❌ ERROR: Almacenamiento lleno.\nEsto suele pasar por:\n\n1. Muchas fotos guardadas\n2. Fotos muy grandes\n\nSolución: Elimina algunas facturas antiguas.');
+            alert('❌ ALMACENAMIENTO LLENO\n\nElimina facturas antiguas o guarda sin foto.');
         }
         return false;
     }
@@ -59,15 +55,14 @@ const fechaManual = document.getElementById('fecha-manual');
 const toggleBtn = document.getElementById('toggle-fecha');
 const searchInput = document.getElementById('search-input');
 
-// Buscador de facturas
+// Buscador
 if (searchInput) {
     searchInput.addEventListener('input', function(e) {
-        const searchTerm = e.target.value.toLowerCase();
-        renderInvoices(searchTerm);
+        renderInvoices(e.target.value.toLowerCase());
     });
 }
 
-// Cambiar entre calendario y manual
+// Toggle fecha
 toggleBtn.addEventListener('click', function() {
     if (modoManual) {
         fechaCalendario.style.display = 'flex';
@@ -86,29 +81,20 @@ toggleBtn.addEventListener('click', function() {
     }
 });
 
-// Auto-formato de fecha manual
+// Auto-formato fecha
 fechaManual.addEventListener('input', function(e) {
     let value = e.target.value.replace(/\D/g, '');
     let formatted = '';
-    
-    if (value.length > 0) {
-        formatted = value.substring(0, 2);
-    }
-    if (value.length >= 3) {
-        formatted += '/' + value.substring(2, 4);
-    }
-    if (value.length >= 5) {
-        formatted += '/' + value.substring(4, 8);
-    }
-    
+    if (value.length > 0) formatted = value.substring(0, 2);
+    if (value.length >= 3) formatted += '/' + value.substring(2, 4);
+    if (value.length >= 5) formatted += '/' + value.substring(4, 8);
     e.target.value = formatted;
 });
 
-// Mostrar/ocultar campo de garantía personalizada
+// Toggle garantía
 function toggleGarantiaPersonalizada() {
     const garantiaTipo = document.getElementById('garantia-tipo').value;
     const garantiaCustom = document.getElementById('garantia-custom');
-    
     if (garantiaTipo === 'custom') {
         garantiaCustom.style.display = 'block';
         garantiaCustom.setAttribute('required', '');
@@ -118,15 +104,14 @@ function toggleGarantiaPersonalizada() {
     }
 }
 
-// Calcular fecha de garantía
 function calcularGarantia(fechaCompra, años) {
     const fecha = new Date(fechaCompra);
     fecha.setFullYear(fecha.getFullYear() + parseInt(años));
     return fecha.toISOString().split('T')[0];
 }
 
-// Comprimir imagen para reducir tamaño
-function comprimirImagen(base64Image, maxWidth = 1200, quality = 0.7) {
+// 🗜️ COMPRIMIR IMAGEN
+function comprimirImagen(base64Image) {
     return new Promise((resolve) => {
         const img = new Image();
         img.onload = function() {
@@ -134,231 +119,200 @@ function comprimirImagen(base64Image, maxWidth = 1200, quality = 0.7) {
             let width = img.width;
             let height = img.height;
             
-            // Redimensionar si es muy grande
-            if (width > maxWidth) {
-                height = (height * maxWidth) / width;
-                width = maxWidth;
+            // Max 800px de ancho
+            if (width > 800) {
+                height = (height * 800) / width;
+                width = 800;
             }
             
             canvas.width = width;
             canvas.height = height;
-            
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, width, height);
             
-            // Comprimir a JPEG con calidad reducida
-            const comprimida = canvas.toDataURL('image/jpeg', quality);
-            console.log('🗜️ Imagen comprimida:', 
-                Math.round(base64Image.length / 1024), 'KB →', 
-                Math.round(comprimida.length / 1024), 'KB');
-            resolve(comprimida);
+            resolve(canvas.toDataURL('image/jpeg', 0.6));
         };
+        img.onerror = () => resolve(base64Image);
         img.src = base64Image;
     });
 }
 
-// Procesar foto de cámara
-photoCamera.addEventListener('change', async function(e) {
-    await procesarFoto(e.target.files[0]);
+// Procesar fotos
+photoCamera.addEventListener('change', async (e) => {
+    if (e.target.files[0]) await procesarFoto(e.target.files[0]);
 });
 
-// Procesar foto de galería
-photoGallery.addEventListener('change', async function(e) {
-    await procesarFoto(e.target.files[0]);
+photoGallery.addEventListener('change', async (e) => {
+    if (e.target.files[0]) await procesarFoto(e.target.files[0]);
 });
 
-// Función para procesar foto con Gemini IA
+// 🤖 PROCESAR FOTO CON IA
 async function procesarFoto(file) {
-    if (file) {
-        const reader = new FileReader();
-        reader.onload = async function(e) {
-            // Comprimir imagen antes de guardar
-            const imagenOriginal = e.target.result;
-            currentPhoto = await comprimirImagen(imagenOriginal, 1200, 0.7);
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = async function(e) {
+        // Comprimir
+        currentPhoto = await comprimirImagen(e.target.result);
+        photoPreview.src = currentPhoto;
+        photoPreview.style.display = 'block';
+        
+        // ⏰ VERIFICAR LÍMITE DE TIEMPO
+        const ahora = Date.now();
+        const tiempoTranscurrido = ahora - ultimaPeticionIA;
+        
+        if (tiempoTranscurrido < TIEMPO_MINIMO_ENTRE_PETICIONES) {
+            const segundosEspera = Math.ceil((TIEMPO_MINIMO_ENTRE_PETICIONES - tiempoTranscurrido) / 1000);
+            alert('⏰ Espera ' + segundosEspera + ' segundos antes de analizar otra factura.\n\n' +
+                  '(Esto evita el error de límite de peticiones)');
+            return;
+        }
+        
+        // Preguntar si quiere usar IA
+        const usarIA = confirm('¿Quieres que la IA analice esta factura?\n\n' +
+                              '✅ SÍ: Análisis automático (puede tardar 10 seg)\n' +
+                              '❌ NO: Introduces datos manualmente\n\n' +
+                              'Nota: Solo 15 análisis cada minuto.');
+        
+        if (!usarIA) {
+            console.log('👤 Usuario eligió introducir datos manualmente');
+            return;
+        }
+        
+        ultimaPeticionIA = ahora;
+        
+        const mensaje = document.createElement('div');
+        mensaje.id = 'loading-ia';
+        mensaje.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); color: white; padding: 20px 30px; border-radius: 10px; z-index: 10000; text-align: center;';
+        mensaje.innerHTML = '🤖 Analizando con IA...<br><small>Espera 5-10 segundos</small>';
+        document.body.appendChild(mensaje);
+        
+        try {
+            const base64Image = currentPhoto.split(',')[1];
             
-            photoPreview.src = currentPhoto;
-            photoPreview.style.display = 'block';
-            
-            // Mostrar mensaje de análisis
-            const mensaje = document.createElement('div');
-            mensaje.id = 'loading-ia';
-            mensaje.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); color: white; padding: 20px 30px; border-radius: 10px; z-index: 10000; text-align: center;';
-            mensaje.innerHTML = '🤖 Analizando factura con IA...<br><small>Esto puede tardar unos segundos</small>';
-            document.body.appendChild(mensaje);
-            
-            try {
-                // Convertir imagen a base64
-                const base64Image = currentPhoto.split(',')[1];
-                
-                // Llamar a Gemini AI con prompt mejorado
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        contents: [{
-                            parts: [
-                                {
-                                    text: 'Analiza esta factura/ticket y extrae los datos principales en formato JSON.\n\nBUSCA:\n\n1. TOTAL: El importe final a pagar (el número más grande, normalmente al final). Si hay varios totales, el que incluye IVA.\n\n2. FECHA: Formato DD/MM/YYYY. Puede aparecer como "Fecha", "Date", o similar.\n\n3. COMERCIO: Nombre de la tienda o empresa (Amazon, Mercadona, MediaMarkt, etc.)\n\n4. ARTÍCULO: Producto o servicio principal. Si hay varios, el primero. Simplifica nombres largos.\n\n5. CATEGORÍA (elige una):\nalimentacion, tecnologia, electrodomesticos, ropa, hogar, transporte, suministros, salud, ocio, deportes, educacion, mascotas, belleza, servicios, otros\n\nResponde SOLO con JSON (sin markdown ni explicaciones):\n\n{\n  "total": "18.04",\n  "fecha": "11/10/2025",\n  "comercio": "Amazon",\n  "articulo": "Organizador cables",\n  "categoria": "hogar"\n}\n\nSi no encuentras un dato, usa null.'
-                                },
-                                {
-                                    inline_data: {
-                                        mime_type: 'image/jpeg',
-                                        data: base64Image
-                                    }
-                                }
-                            ]
-                        }],
-                        generationConfig: {
-                            temperature: 0.15,
-                            topK: 40,
-                            topP: 0.95,
-                            maxOutputTokens: 800,
-                        }
-                    })
-                });
-                
-                // Quitar mensaje de carga
-                const loadingMsg = document.getElementById('loading-ia');
-                if (loadingMsg) {
-                    document.body.removeChild(loadingMsg);
-                }
-                
-                if (!response.ok) {
-                    throw new Error(`Error HTTP: ${response.status}`);
-                }
-                
-                const data = await response.json();
-                console.log('Respuesta completa de Gemini:', data);
-                
-                if (data.candidates && data.candidates[0].content && data.candidates[0].content.parts) {
-                    const textoRespuesta = data.candidates[0].content.parts[0].text;
-                    console.log('Texto extraído:', textoRespuesta);
-                    
-                    // Limpiar la respuesta (quitar markdown)
-                    let jsonText = textoRespuesta
-                        .replace(/```json\n?/g, '')
-                        .replace(/```\n?/g, '')
-                        .trim();
-                    
-                    // Si empieza con texto, buscar el JSON
-                    const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
-                    if (jsonMatch) {
-                        jsonText = jsonMatch[0];
-                    }
-                    
-                    console.log('JSON limpio:', jsonText);
-                    
-                    try {
-                        const datosFactura = JSON.parse(jsonText);
-                        let datosDetectados = [];
-                        
-                        // Rellenar importe
-                        if (datosFactura.total && datosFactura.total !== null) {
-                            const importeNumerico = String(datosFactura.total).replace(',', '.');
-                            document.getElementById('importe').value = importeNumerico;
-                            datosDetectados.push('💰 Total: ' + importeNumerico + '€');
-                        }
-                        
-                        // Rellenar fecha
-                        if (datosFactura.fecha && datosFactura.fecha !== null) {
-                            if (modoManual) {
-                                fechaManual.value = datosFactura.fecha;
-                            } else {
-                                // Convertir dd/mm/yyyy a yyyy-mm-dd
-                                const partes = datosFactura.fecha.split('/');
-                                if (partes.length === 3) {
-                                    const fechaISO = partes[2] + '-' + partes[1] + '-' + partes[0];
-                                    fechaCalendario.value = fechaISO;
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [
+                            {
+                                text: 'Analiza este ticket/factura y extrae:\n\n1. TOTAL a pagar (número con decimales)\n2. FECHA (formato DD/MM/YYYY)\n3. COMERCIO (nombre tienda)\n4. ARTÍCULO (producto principal)\n5. CATEGORÍA (elige: alimentacion, tecnologia, electrodomesticos, ropa, hogar, transporte, suministros, salud, ocio, deportes, educacion, mascotas, belleza, servicios, otros)\n\nResponde SOLO JSON sin markdown:\n{"total":"12.50","fecha":"12/11/2025","comercio":"Mercadona","articulo":"Compra","categoria":"alimentacion"}\n\nSi no encuentras algo: null'
+                            },
+                            {
+                                inline_data: {
+                                    mime_type: 'image/jpeg',
+                                    data: base64Image
                                 }
                             }
-                            datosDetectados.push('📅 Fecha: ' + datosFactura.fecha);
-                        }
-                        
-                        // Rellenar concepto
-                        if (datosFactura.comercio || datosFactura.articulo) {
-                            let concepto = '';
-                            if (datosFactura.comercio && datosFactura.comercio !== null) {
-                                concepto = datosFactura.comercio;
-                            }
-                            if (datosFactura.articulo && datosFactura.articulo !== null) {
-                                concepto += (concepto ? ' - ' : '') + datosFactura.articulo;
-                            }
-                            document.getElementById('concepto').value = concepto;
-                            datosDetectados.push('🏪 ' + concepto);
-                        }
-                        
-                        // Rellenar categoría
-                        if (datosFactura.categoria && datosFactura.categoria !== null) {
-                            const categoriaSelect = document.getElementById('categoria');
-                            const optionExists = Array.from(categoriaSelect.options).some(opt => opt.value === datosFactura.categoria);
-                            if (optionExists) {
-                                categoriaSelect.value = datosFactura.categoria;
-                                datosDetectados.push('📦 Categoría: ' + datosFactura.categoria);
-                            }
-                        }
-                        
-                        if (datosDetectados.length > 0) {
-                            alert('✅ Datos detectados por IA:\n\n' + datosDetectados.join('\n') + '\n\n👀 Verifica que sean correctos');
-                        } else {
-                            alert('⚠️ No se pudieron extraer datos automáticamente.\nIntrodúcelos manualmente.');
-                        }
-                        
-                    } catch (parseError) {
-                        console.error('Error parseando JSON:', parseError);
-                        alert('⚠️ IA respondió pero no pudo procesar los datos.\nIntrodúcelos manualmente.');
+                        ]
+                    }],
+                    generationConfig: {
+                        temperature: 0.1,
+                        maxOutputTokens: 500
                     }
+                })
+            });
+            
+            const loadingMsg = document.getElementById('loading-ia');
+            if (loadingMsg) document.body.removeChild(loadingMsg);
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('Error API:', response.status, errorText);
+                
+                if (response.status === 429) {
+                    alert('⏰ LÍMITE DE PETICIONES\n\nGemini solo permite 15 peticiones por minuto.\n\nEspera 1 minuto o introduce datos manualmente.');
+                } else if (response.status === 403) {
+                    alert('⚠️ API KEY inválida o sin permisos.\n\nIntroduce datos manualmente.');
                 } else {
-                    alert('⚠️ No se recibió respuesta válida de la IA.\nIntroduce los datos manualmente.');
+                    alert('❌ Error ' + response.status + '\n\nIntroduce datos manualmente.');
                 }
-            } catch (error) {
-                console.error('Error completo:', error);
-                const loadingMsg = document.getElementById('loading-ia');
-                if (loadingMsg) {
-                    document.body.removeChild(loadingMsg);
-                }
-                if (error.message.includes('429')) {
-                    alert('⚠️ Límite de peticiones alcanzado.\nEspera unos minutos e intenta de nuevo, o introduce los datos manualmente.');
-                } else if (error.message.includes('403')) {
-                    alert('⚠️ Problema con la API key de Gemini.\nIntroduce los datos manualmente por ahora.');
-                } else {
-                    alert('❌ Error al conectar con la IA.\nVerifica tu conexión e intenta de nuevo, o introduce los datos manualmente.');
-                }
+                return;
             }
-        };
-        reader.readAsDataURL(file);
-    }
+            
+            const data = await response.json();
+            
+            if (data.candidates && data.candidates[0]?.content?.parts) {
+                let texto = data.candidates[0].content.parts[0].text;
+                texto = texto.replace(/```json\n?/g, '').replace(/```/g, '').trim();
+                
+                const jsonMatch = texto.match(/\{[^}]+\}/);
+                if (jsonMatch) texto = jsonMatch[0];
+                
+                const datos = JSON.parse(texto);
+                let detectados = [];
+                
+                if (datos.total) {
+                    document.getElementById('importe').value = String(datos.total).replace(',', '.');
+                    detectados.push('💰 ' + datos.total + '€');
+                }
+                
+                if (datos.fecha) {
+                    if (modoManual) {
+                        fechaManual.value = datos.fecha;
+                    } else {
+                        const p = datos.fecha.split('/');
+                        if (p.length === 3) {
+                            fechaCalendario.value = p[2] + '-' + p[1] + '-' + p[0];
+                        }
+                    }
+                    detectados.push('📅 ' + datos.fecha);
+                }
+                
+                if (datos.comercio || datos.articulo) {
+                    let concepto = (datos.comercio || '') + (datos.comercio && datos.articulo ? ' - ' : '') + (datos.articulo || '');
+                    document.getElementById('concepto').value = concepto;
+                    detectados.push('🏪 ' + concepto);
+                }
+                
+                if (datos.categoria) {
+                    document.getElementById('categoria').value = datos.categoria;
+                    detectados.push('📦 ' + datos.categoria);
+                }
+                
+                if (detectados.length > 0) {
+                    alert('✅ DETECTADO:\n\n' + detectados.join('\n') + '\n\n👀 Verifica antes de guardar');
+                } else {
+                    alert('⚠️ No se detectaron datos.\n\nIntrodúcelos manualmente.');
+                }
+            } else {
+                alert('⚠️ IA sin respuesta válida.\n\nIntroduce datos manualmente.');
+            }
+            
+        } catch (error) {
+            console.error('Error:', error);
+            const loadingMsg = document.getElementById('loading-ia');
+            if (loadingMsg) document.body.removeChild(loadingMsg);
+            
+            alert('❌ Error procesando IA:\n\n' + error.message + '\n\nIntroduce datos manualmente.');
+        }
+    };
+    reader.readAsDataURL(file);
 }
 
-// Guardar factura
+// 💾 GUARDAR FACTURA
 form.addEventListener('submit', function(e) {
     e.preventDefault();
     
-    // Obtener fecha
-    let fecha;
-    let fechaISO;
+    let fecha, fechaISO;
     if (modoManual) {
         fecha = fechaManual.value;
-        // Convertir dd/mm/yyyy a ISO
-        const partes = fecha.split('/');
-        fechaISO = partes[2] + '-' + partes[1] + '-' + partes[0];
+        const p = fecha.split('/');
+        fechaISO = p[2] + '-' + p[1] + '-' + p[0];
     } else {
         fechaISO = fechaCalendario.value;
-        const fechaObj = new Date(fechaISO);
-        const dia = String(fechaObj.getDate()).padStart(2, '0');
-        const mes = String(fechaObj.getMonth() + 1).padStart(2, '0');
-        const año = fechaObj.getFullYear();
-        fecha = dia + '/' + mes + '/' + año;
+        const f = new Date(fechaISO);
+        fecha = String(f.getDate()).padStart(2, '0') + '/' + 
+                String(f.getMonth() + 1).padStart(2, '0') + '/' + 
+                f.getFullYear();
     }
     
-    // Calcular garantía
     let garantiaHasta = '';
     const garantiaTipo = document.getElementById('garantia-tipo').value;
-    
     if (garantiaTipo === 'custom') {
         garantiaHasta = document.getElementById('garantia-custom').value;
-    } else if (garantiaTipo !== '') {
+    } else if (garantiaTipo) {
         garantiaHasta = calcularGarantia(fechaISO, garantiaTipo);
     }
     
@@ -374,158 +328,102 @@ form.addEventListener('submit', function(e) {
         timestamp: new Date().toISOString()
     };
     
-    console.log('🆕 Nueva factura:', invoice);
-    
-    // Agregar al principio
     invoices.unshift(invoice);
     
-    // Intentar guardar
     if (guardarFacturas()) {
         form.reset();
         photoPreview.style.display = 'none';
         currentPhoto = null;
         toggleGarantiaPersonalizada();
         renderInvoices();
-        alert('✅ Factura guardada correctamente\n\n📊 Total facturas: ' + invoices.length);
-    } else {
-        // Si falla, quitar la factura recién agregada
-        invoices.shift();
-        alert('❌ No se pudo guardar la factura.\nPosible causa: almacenamiento lleno.');
+        alert('✅ Factura guardada\n\n📊 Total: ' + invoices.length + ' facturas');
     }
 });
 
-// Mostrar facturas
+// 📋 MOSTRAR FACTURAS
 function renderInvoices(searchTerm = '') {
     count.textContent = invoices.length;
     
-    // Filtrar facturas según búsqueda
-    let facturasAMostrar = invoices;
+    let lista = invoices;
     if (searchTerm) {
-        facturasAMostrar = invoices.filter(function(invoice) {
-            const concepto = invoice.concepto.toLowerCase();
-            return concepto.includes(searchTerm);
-        });
+        lista = invoices.filter(inv => inv.concepto.toLowerCase().includes(searchTerm));
     }
     
-    if (facturasAMostrar.length === 0) {
-        if (searchTerm) {
-            invoiceList.innerHTML = '<div class="empty-state">No se encontraron facturas con "' + searchTerm + '"</div>';
-        } else {
-            invoiceList.innerHTML = '<div class="empty-state">No hay facturas guardadas.<br>¡Añade tu primera factura!</div>';
-        }
+    if (lista.length === 0) {
+        invoiceList.innerHTML = searchTerm ? 
+            '<div class="empty-state">Sin resultados para "' + searchTerm + '"</div>' :
+            '<div class="empty-state">Sin facturas<br>¡Añade la primera!</div>';
         return;
     }
     
-    invoiceList.innerHTML = facturasAMostrar.map(function(invoice) {
+    invoiceList.innerHTML = lista.map(function(inv) {
         let garantiaHTML = '';
-        if (invoice.garantia) {
-            const garantiaFecha = new Date(invoice.garantia);
-            const hoy = new Date();
-            const diasRestantes = Math.floor((garantiaFecha - hoy) / (1000 * 60 * 60 * 24));
-            
-            let garantiaColor = '#666';
-            let garantiaIcono = '⏰';
-            
-            if (diasRestantes < 0) {
-                garantiaColor = '#999';
-                garantiaIcono = '❌';
-                garantiaHTML = '<div style="color: ' + garantiaColor + '; font-size: 0.9em; margin-top: 5px;">' + garantiaIcono + ' Garantía caducada</div>';
-            } else if (diasRestantes < 90) {
-                garantiaColor = '#ff6b6b';
-                garantiaIcono = '⚠️';
-                garantiaHTML = '<div style="color: ' + garantiaColor + '; font-size: 0.9em; margin-top: 5px;">' + garantiaIcono + ' Garantía hasta: ' + formatearFecha(invoice.garantia) + ' (' + diasRestantes + ' días)</div>';
+        if (inv.garantia) {
+            const gFecha = new Date(inv.garantia);
+            const dias = Math.floor((gFecha - new Date()) / 86400000);
+            if (dias < 0) {
+                garantiaHTML = '<div style="color:#999;font-size:0.9em;margin-top:5px">❌ Garantía caducada</div>';
+            } else if (dias < 90) {
+                garantiaHTML = '<div style="color:#ff6b6b;font-size:0.9em;margin-top:5px">⚠️ Garantía: ' + formatearFecha(inv.garantia) + ' (' + dias + ' días)</div>';
             } else {
-                garantiaHTML = '<div style="color: ' + garantiaColor + '; font-size: 0.9em; margin-top: 5px;">' + garantiaIcono + ' Garantía hasta: ' + formatearFecha(invoice.garantia) + '</div>';
+                garantiaHTML = '<div style="color:#666;font-size:0.9em;margin-top:5px">⏰ Garantía: ' + formatearFecha(inv.garantia) + '</div>';
             }
         }
         
-        // Generar HTML para imagen (miniatura que se expande)
-        let imagenHTML = '';
-        if (invoice.photo) {
-            imagenHTML = '<img src="' + invoice.photo + '" alt="Factura" class="invoice-image-preview" onclick="toggleImage(' + invoice.id + ')" id="img-preview-' + invoice.id + '">' +
-                        '<img src="' + invoice.photo + '" alt="Factura completa" class="invoice-image-full" onclick="toggleImage(' + invoice.id + ')" id="img-full-' + invoice.id + '" style="display: none;">';
+        let imgHTML = '';
+        if (inv.photo) {
+            imgHTML = '<img src="' + inv.photo + '" class="invoice-image-preview" onclick="toggleImage(' + inv.id + ')" id="img-p-' + inv.id + '">' +
+                     '<img src="' + inv.photo + '" class="invoice-image-full" onclick="toggleImage(' + inv.id + ')" id="img-f-' + inv.id + '" style="display:none">';
         }
         
         return '<div class="invoice-item">' +
             '<div class="invoice-header">' +
                 '<div>' +
-                    '<div class="invoice-amount">' + invoice.importe.toFixed(2) + '€</div>' +
-                    '<div class="invoice-details">' +
-                        getCategoryEmoji(invoice.categoria) + ' ' + (invoice.categoria || 'Sin categoría') + ' • ' + invoice.fecha +
-                    '</div>' +
+                    '<div class="invoice-amount">' + inv.importe.toFixed(2) + '€</div>' +
+                    '<div class="invoice-details">' + getCategoryEmoji(inv.categoria) + ' ' + inv.categoria + ' • ' + inv.fecha + '</div>' +
                 '</div>' +
-                '<button class="btn-delete" onclick="deleteInvoice(' + invoice.id + ')">🗑️</button>' +
+                '<button class="btn-delete" onclick="deleteInvoice(' + inv.id + ')">🗑️</button>' +
             '</div>' +
-            '<div><strong>' + invoice.concepto + '</strong></div>' +
-            garantiaHTML +
-            imagenHTML +
+            '<div><strong>' + inv.concepto + '</strong></div>' +
+            garantiaHTML + imgHTML +
         '</div>';
     }).join('');
 }
 
-// Toggle de imagen (expandir/contraer)
 function toggleImage(id) {
-    const preview = document.getElementById('img-preview-' + id);
-    const full = document.getElementById('img-full-' + id);
-    
-    if (preview && full) {
-        if (preview.style.display === 'none') {
-            preview.style.display = 'block';
-            full.style.display = 'none';
+    const p = document.getElementById('img-p-' + id);
+    const f = document.getElementById('img-f-' + id);
+    if (p && f) {
+        if (p.style.display === 'none') {
+            p.style.display = 'block';
+            f.style.display = 'none';
         } else {
-            preview.style.display = 'none';
-            full.style.display = 'block';
+            p.style.display = 'none';
+            f.style.display = 'block';
         }
     }
 }
 
-// Eliminar factura
 function deleteInvoice(id) {
-    var confirmado = confirm('¿Eliminar esta factura?');
-    if (confirmado) {
-        invoices = invoices.filter(function(inv) { 
-            return inv.id !== id; 
-        });
+    if (confirm('¿Eliminar factura?')) {
+        invoices = invoices.filter(inv => inv.id !== id);
         guardarFacturas();
         renderInvoices();
     }
 }
 
-// Utilidades
-function getCategoryEmoji(category) {
-    const emojis = {
-        'alimentacion': '🍔',
-        'tecnologia': '📱',
-        'electrodomesticos': '⚡',
-        'ropa': '👕',
-        'hogar': '🏠',
-        'transporte': '🚗',
-        'suministros': '💡',
-        'salud': '🏥',
-        'ocio': '🎮',
-        'deportes': '🏋️',
-        'educacion': '📚',
-        'mascotas': '🐾',
-        'belleza': '💈',
-        'servicios': '🔧',
-        'otros': '📦'
-    };
-    return emojis[category] || '📄';
+function getCategoryEmoji(cat) {
+    const e = {alimentacion:'🍔',tecnologia:'📱',electrodomesticos:'⚡',ropa:'👕',hogar:'🏠',transporte:'🚗',suministros:'💡',salud:'🏥',ocio:'🎮',deportes:'🏋️',educacion:'📚',mascotas:'🐾',belleza:'💈',servicios:'🔧',otros:'📦'};
+    return e[cat] || '📄';
 }
 
-function formatearFecha(fechaISO) {
-    if (!fechaISO) return '';
-    const fecha = new Date(fechaISO);
-    const dia = String(fecha.getDate()).padStart(2, '0');
-    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
-    const año = fecha.getFullYear();
-    return dia + '/' + mes + '/' + año;
+function formatearFecha(iso) {
+    if (!iso) return '';
+    const f = new Date(iso);
+    return String(f.getDate()).padStart(2,'0') + '/' + String(f.getMonth()+1).padStart(2,'0') + '/' + f.getFullYear();
 }
 
-// Cargar facturas al inicio
+// INICIAR
 cargarFacturas();
 renderInvoices();
-
-// Info de depuración en consola
-console.log('📱 Gestor de Facturas PRO iniciado');
-console.log('📊 Facturas cargadas:', invoices.length);
+console.log('✅ App iniciada -', invoices.length, 'facturas');
