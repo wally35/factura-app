@@ -10,14 +10,8 @@
     <div class="container">
         <header>
             <h1>📱 Gestor de Facturas</h1>
-            <div class="header-actions">
-                <div class="count-badge">
-                    <span id="count">0</span> facturas
-                </div>
-                <div class="warning-badge" id="warning-badge" style="display: none;">
-                    <span id="warning-count">0</span> 🔔
-                </div>
-                <button id="menu-btn" class="btn-menu">☰</button>
+            <div class="count-badge">
+                <span id="count">0</span> facturas
             </div>
         </header>
 
@@ -36,12 +30,6 @@
             <img id="photo-preview" alt="Vista previa" style="display: none;">
         </section>
 
-        <!-- Sección de Avisos de Garantías -->
-        <section class="warnings-section" id="warnings-section" style="display: none;">
-            <h2>🔔 Avisos de Garantías</h2>
-            <div id="warnings-list"></div>
-        </section>
-
         <form id="invoice-form">
             <div class="form-group">
                 <label>📅 Fecha de compra</label>
@@ -58,16 +46,8 @@
             </div>
 
             <div class="form-group">
-                <label for="comercio">🏪 Comercio</label>
-                <input type="text" id="comercio" required placeholder="Ej: MediaMarkt, Amazon, Mercadona">
-            </div>
-
-            <div class="form-group">
-                <label for="articulos">📦 Artículos comprados</label>
-                <input type="text" id="articulos" placeholder="Ej: Lavadora Samsung, Secadora Bosch, Cable HDMI">
-                <small style="color: #666; font-size: 12px; display: block; margin-top: 5px;">
-                    💡 Separa múltiples productos con comas. La IA los detectará automáticamente.
-                </small>
+                <label for="concepto">📝 Concepto (Comercio - Artículo)</label>
+                <input type="text" id="concepto" required placeholder="Ej: Mercadona - Compra semanal">
             </div>
 
             <div class="form-group">
@@ -93,41 +73,20 @@
             </div>
 
             <div class="form-group">
-                <label for="garantia-tipo">⏰ Garantía Legal</label>
+                <label for="garantia-tipo">⏰ Garantía</label>
                 <select id="garantia-tipo" onchange="toggleGarantiaPersonalizada()">
                     <option value="">Sin garantía</option>
                     <option value="1">1 año</option>
                     <option value="2">2 años</option>
-                    <option value="3">3 años 🇪🇸</option>
+                    <option value="3">3 años</option>
                     <option value="5">5 años</option>
                     <option value="custom">Personalizada</option>
                 </select>
-                <small style="color: #666; font-size: 12px; display: block; margin-top: 5px;">
-                    ⚖️ En España: 3 años para electrónica y electrodomésticos (asignación automática)
-                </small>
             </div>
 
             <div class="form-group" id="garantia-custom" style="display: none;">
                 <label for="garantia-custom-date">📅 Fecha fin de garantía</label>
-                <input type="date" id="garantia-custom-date">
-            </div>
-
-            <div class="form-group-extended">
-                <h3 style="margin-bottom: 10px; color: #4facfe;">🛡️ Garantía Extendida (Opcional)</h3>
-                
-                <div class="form-group">
-                    <label for="garantia-ext-nombre">Nombre de la garantía</label>
-                    <input type="text" id="garantia-ext-nombre" placeholder="Ej: AppleCare+, Care Pack, Seguro">
-                </div>
-                
-                <div class="form-group">
-                    <label for="garantia-ext-anos">Años adicionales</label>
-                    <input type="number" id="garantia-ext-anos" min="1" max="10" placeholder="Años extra">
-                </div>
-                
-                <small style="color: #666; font-size: 12px; display: block;">
-                    💡 La IA detectará garantías extendidas automáticamente (AppleCare, Care Pack, etc.)
-                </small>
+                <input type="date" id="garantia-custom">
             </div>
 
             <button type="submit" class="btn btn-success">💾 Guardar Factura</button>
@@ -143,50 +102,6 @@
             
             <div id="invoice-list"></div>
         </section>
-    </div>
-
-    <!-- Menú lateral -->
-    <div id="menu-overlay" class="menu-overlay"></div>
-    <div id="menu-panel" class="menu-panel">
-        <div class="menu-header">
-            <h2>⚙️ Configuración</h2>
-            <button id="menu-close" class="btn-close">✕</button>
-        </div>
-        
-        <div class="menu-content">
-            <button class="menu-item" onclick="showAbout()">
-                ℹ️ Acerca de
-            </button>
-            
-            <button class="menu-item" onclick="showLegal()">
-                ⚖️ Aviso Legal
-            </button>
-            
-            <button class="menu-item" id="drive-btn" onclick="connectDrive()">
-                📁 Conectar Google Drive
-            </button>
-            
-            <button class="menu-item" id="drive-save-btn" onclick="saveToDrive()" style="display: none;">
-                ☁️ Guardar en Drive
-            </button>
-            
-            <button class="menu-item" onclick="exportData()">
-                💾 Exportar Datos
-            </button>
-            
-            <button class="menu-item" onclick="importData()">
-                📥 Importar Datos
-            </button>
-            
-            <button class="menu-item danger" onclick="deleteAllData()">
-                🗑️ Borrar Todo
-            </button>
-        </div>
-        
-        <div class="menu-footer">
-            <p>DocuScan Pro v2.0</p>
-            <p style="font-size: 12px; color: #999;">© 2025 David - GPInformático</p>
-        </div>
     </div>
 
     <script src="app.js"></script>
