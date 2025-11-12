@@ -1,7 +1,48 @@
-// Base de datos local
-let invoices = JSON.parse(localStorage.getItem('invoices')) || [];
+// Base de datos local con verificación mejorada
+let invoices = [];
 let currentPhoto = null;
 let modoManual = false;
+
+// Cargar facturas con validación
+function cargarFacturas() {
+    try {
+        const stored = localStorage.getItem('invoices');
+        if (stored) {
+            invoices = JSON.parse(stored);
+            console.log('✅ Facturas cargadas:', invoices.length);
+        } else {
+            invoices = [];
+            console.log('📋 No hay facturas previas');
+        }
+    } catch (e) {
+        console.error('❌ Error cargando facturas:', e);
+        invoices = [];
+    }
+}
+
+// Guardar facturas con verificación
+function guardarFacturas() {
+    try {
+        const jsonString = JSON.stringify(invoices);
+        const sizeInMB = (jsonString.length / (1024 * 1024)).toFixed(2);
+        console.log('💾 Guardando', invoices.length, 'facturas. Tamaño:', sizeInMB, 'MB');
+        
+        // Verificar límite de localStorage (5MB típico)
+        if (sizeInMB > 4.5) {
+            alert('⚠️ Advertencia: Alcanzando límite de almacenamiento (' + sizeInMB + 'MB).\nConsidera eliminar facturas antiguas.');
+        }
+        
+        localStorage.setItem('invoices', jsonString);
+        console.log('✅ Facturas guardadas correctamente');
+        return true;
+    } catch (e) {
+        console.error('❌ Error guardando:', e);
+        if (e.name === 'QuotaExceededError') {
+            alert('❌ ERROR: Almacenamiento lleno.\nEsto suele pasar por:\n\n1. Muchas fotos guardadas\n2. Fotos muy grandes\n\nSolución: Elimina algunas facturas antiguas.');
+        }
+        return false;
+    }
+}
 
 // Gemini API Key
 const GEMINI_API_KEY = 'AIzaSyCKdb9YfWi23ZraEQ6PE_MgyEaw9x1s4g8';
@@ -84,6 +125,38 @@ function calcularGarantia(fechaCompra, años) {
     return fecha.toISOString().split('T')[0];
 }
 
+// Comprimir imagen para reducir tamaño
+function comprimirImagen(base64Image, maxWidth = 1200, quality = 0.7) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = function() {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            
+            // Redimensionar si es muy grande
+            if (width > maxWidth) {
+                height = (height * maxWidth) / width;
+                width = maxWidth;
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // Comprimir a JPEG con calidad reducida
+            const comprimida = canvas.toDataURL('image/jpeg', quality);
+            console.log('🗜️ Imagen comprimida:', 
+                Math.round(base64Image.length / 1024), 'KB →', 
+                Math.round(comprimida.length / 1024), 'KB');
+            resolve(comprimida);
+        };
+        img.src = base64Image;
+    });
+}
+
 // Procesar foto de cámara
 photoCamera.addEventListener('change', async function(e) {
     await procesarFoto(e.target.files[0]);
@@ -99,7 +172,10 @@ async function procesarFoto(file) {
     if (file) {
         const reader = new FileReader();
         reader.onload = async function(e) {
-            currentPhoto = e.target.result;
+            // Comprimir imagen antes de guardar
+            const imagenOriginal = e.target.result;
+            currentPhoto = await comprimirImagen(imagenOriginal, 1200, 0.7);
+            
             photoPreview.src = currentPhoto;
             photoPreview.style.display = 'block';
             
@@ -115,7 +191,7 @@ async function procesarFoto(file) {
                 const base64Image = currentPhoto.split(',')[1];
                 
                 // Llamar a Gemini AI con prompt mejorado
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -193,85 +269,58 @@ async function procesarFoto(file) {
                                 // Convertir dd/mm/yyyy a yyyy-mm-dd
                                 const partes = datosFactura.fecha.split('/');
                                 if (partes.length === 3) {
-                                    const fechaISO = `${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`;
+                                    const fechaISO = partes[2] + '-' + partes[1] + '-' + partes[0];
                                     fechaCalendario.value = fechaISO;
                                 }
                             }
                             datosDetectados.push('📅 Fecha: ' + datosFactura.fecha);
                         }
                         
-                        // Rellenar concepto/comercio y artículo
-                        let conceptoFinal = '';
-                        
-                        if (datosFactura.comercio && datosFactura.comercio !== null) {
-                            conceptoFinal = datosFactura.comercio;
-                            datosDetectados.push('🏪 Comercio: ' + datosFactura.comercio);
-                        }
-                        
-                        if (datosFactura.articulo && datosFactura.articulo !== null) {
-                            if (conceptoFinal) {
-                                conceptoFinal += ' - ' + datosFactura.articulo;
-                            } else {
-                                conceptoFinal = datosFactura.articulo;
+                        // Rellenar concepto
+                        if (datosFactura.comercio || datosFactura.articulo) {
+                            let concepto = '';
+                            if (datosFactura.comercio && datosFactura.comercio !== null) {
+                                concepto = datosFactura.comercio;
                             }
-                            datosDetectados.push('📦 Artículo: ' + datosFactura.articulo);
+                            if (datosFactura.articulo && datosFactura.articulo !== null) {
+                                concepto += (concepto ? ' - ' : '') + datosFactura.articulo;
+                            }
+                            document.getElementById('concepto').value = concepto;
+                            datosDetectados.push('🏪 ' + concepto);
                         }
                         
-                        if (conceptoFinal) {
-                            document.getElementById('concepto').value = conceptoFinal;
-                        }
-                        
-                        // Rellenar categoría automáticamente
+                        // Rellenar categoría
                         if (datosFactura.categoria && datosFactura.categoria !== null) {
                             const categoriaSelect = document.getElementById('categoria');
-                            // Verificar que la categoría existe en el select
-                            const opcionCategoria = Array.from(categoriaSelect.options).find(
-                                option => option.value === datosFactura.categoria
-                            );
-                            if (opcionCategoria) {
+                            const optionExists = Array.from(categoriaSelect.options).some(opt => opt.value === datosFactura.categoria);
+                            if (optionExists) {
                                 categoriaSelect.value = datosFactura.categoria;
                                 datosDetectados.push('📦 Categoría: ' + datosFactura.categoria);
                             }
                         }
                         
-                        // ✨ Asignar garantía automática si es Electrónica o Electrodomésticos
-                        const garantiaSelect = document.getElementById('garantia-tipo');
-                        if (datosFactura.categoria === 'tecnologia' || datosFactura.categoria === 'electrodomesticos') {
-                            garantiaSelect.value = '3';
-                            datosDetectados.push('✅ Garantía legal: 3 años (automática)');
-                        } else {
-                            // Para otros productos, dejar sin garantía
-                            garantiaSelect.value = '';
-                        }
-                        
                         if (datosDetectados.length > 0) {
-                            alert('✅ Datos detectados con IA:\n\n' + datosDetectados.join('\n') + '\n\n⚠️ Revisa que todo sea correcto antes de guardar.');
+                            alert('✅ Datos detectados por IA:\n\n' + datosDetectados.join('\n') + '\n\n👀 Verifica que sean correctos');
                         } else {
-                            alert('⚠️ La IA no pudo detectar datos automáticamente.\nPuedes introducirlos manualmente.');
+                            alert('⚠️ No se pudieron extraer datos automáticamente.\nIntrodúcelos manualmente.');
                         }
                         
                     } catch (parseError) {
-                        console.error('Error al parsear JSON:', parseError);
-                        console.error('Texto recibido:', jsonText);
-                        alert('⚠️ La IA no pudo extraer los datos en el formato esperado.\nIntroduce los datos manualmente.');
+                        console.error('Error parseando JSON:', parseError);
+                        alert('⚠️ IA respondió pero no pudo procesar los datos.\nIntrodúcelos manualmente.');
                     }
                 } else {
-                    console.error('Respuesta inesperada:', data);
-                    alert('❌ No se pudo analizar la factura.\nIntroduce los datos manualmente.');
+                    alert('⚠️ No se recibió respuesta válida de la IA.\nIntroduce los datos manualmente.');
                 }
-                
             } catch (error) {
-                // Quitar mensaje de carga si aún está
-                const mensajeExistente = document.getElementById('loading-ia');
-                if (mensajeExistente) {
-                    document.body.removeChild(mensajeExistente);
+                console.error('Error completo:', error);
+                const loadingMsg = document.getElementById('loading-ia');
+                if (loadingMsg) {
+                    document.body.removeChild(loadingMsg);
                 }
-                
-                console.error('Error completo al procesar con Gemini:', error);
-                
                 if (error.message.includes('429')) {
-                    alert('⚠️ Límite de solicitudes excedido.\nEspera unos minutos e intenta de nuevo, o introduce los datos manualmente.');
-                } else if (error.message.includes('403') || error.message.includes('401')) {
+                    alert('⚠️ Límite de peticiones alcanzado.\nEspera unos minutos e intenta de nuevo, o introduce los datos manualmente.');
+                } else if (error.message.includes('403')) {
                     alert('⚠️ Problema con la API key de Gemini.\nIntroduce los datos manualmente por ahora.');
                 } else {
                     alert('❌ Error al conectar con la IA.\nVerifica tu conexión e intenta de nuevo, o introduce los datos manualmente.');
@@ -325,16 +374,24 @@ form.addEventListener('submit', function(e) {
         timestamp: new Date().toISOString()
     };
     
+    console.log('🆕 Nueva factura:', invoice);
+    
+    // Agregar al principio
     invoices.unshift(invoice);
-    localStorage.setItem('invoices', JSON.stringify(invoices));
     
-    form.reset();
-    photoPreview.style.display = 'none';
-    currentPhoto = null;
-    toggleGarantiaPersonalizada();
-    
-    renderInvoices();
-    alert('✅ Factura guardada correctamente');
+    // Intentar guardar
+    if (guardarFacturas()) {
+        form.reset();
+        photoPreview.style.display = 'none';
+        currentPhoto = null;
+        toggleGarantiaPersonalizada();
+        renderInvoices();
+        alert('✅ Factura guardada correctamente\n\n📊 Total facturas: ' + invoices.length);
+    } else {
+        // Si falla, quitar la factura recién agregada
+        invoices.shift();
+        alert('❌ No se pudo guardar la factura.\nPosible causa: almacenamiento lleno.');
+    }
 });
 
 // Mostrar facturas
@@ -429,7 +486,7 @@ function deleteInvoice(id) {
         invoices = invoices.filter(function(inv) { 
             return inv.id !== id; 
         });
-        localStorage.setItem('invoices', JSON.stringify(invoices));
+        guardarFacturas();
         renderInvoices();
     }
 }
@@ -466,4 +523,9 @@ function formatearFecha(fechaISO) {
 }
 
 // Cargar facturas al inicio
+cargarFacturas();
 renderInvoices();
+
+// Info de depuración en consola
+console.log('📱 Gestor de Facturas PRO iniciado');
+console.log('📊 Facturas cargadas:', invoices.length);
