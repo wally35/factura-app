@@ -1,18 +1,9 @@
-// 📱 GESTOR DE FACTURAS PRO - Versión con IA Gemini Optimizada
+// 📱 GESTOR DE FACTURAS PRO - Versión Híbrida Inteligente
+// Intenta Gemini IA, si falla usa Tesseract OCR automáticamente
+
 let invoices = [];
 let currentPhoto = null;
 let modoManual = false;
-
-// Control silencioso de límites
-let peticionesHoy = parseInt(localStorage.getItem('gemini_count') || '0');
-let ultimoDia = localStorage.getItem('gemini_date') || '';
-const hoy = new Date().toDateString();
-
-if (ultimoDia !== hoy) {
-    peticionesHoy = 0;
-    localStorage.setItem('gemini_count', '0');
-    localStorage.setItem('gemini_date', hoy);
-}
 
 function cargarFacturas() {
     try {
@@ -115,15 +106,16 @@ function comprimirImagen(base64Image) {
             const canvas = document.createElement('canvas');
             let width = img.width;
             let height = img.height;
-            if (width > 1000) {
-                height = (height * 1000) / width;
-                width = 1000;
+            if (width > 1200) {
+                height = (height * 1200) / width;
+                width = 1200;
             }
             canvas.width = width;
             canvas.height = height;
             const ctx = canvas.getContext('2d');
+            ctx.filter = 'contrast(1.2) brightness(1.1)';
             ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', 0.7));
+            resolve(canvas.toDataURL('image/jpeg', 0.85));
         };
         img.onerror = () => resolve(base64Image);
         img.src = base64Image;
@@ -138,7 +130,7 @@ photoGallery.addEventListener('change', async (e) => {
     if (e.target.files[0]) await procesarFoto(e.target.files[0]);
 });
 
-// 🤖 PROCESAR FOTO CON GEMINI IA
+// 🤖 PROCESAR FOTO - HÍBRIDO INTELIGENTE
 async function procesarFoto(file) {
     if (!file) return;
     
@@ -149,201 +141,259 @@ async function procesarFoto(file) {
         photoPreview.style.display = 'block';
         
         const usarIA = confirm('¿Analizar factura automáticamente?\n\n' +
-                              '✅ SÍ: Detección inteligente con IA\n' +
-                              '❌ NO: Introducir datos manualmente');
+                              '✅ SÍ: Detección automática\n' +
+                              '❌ NO: Introducir manualmente');
         
         if (!usarIA) return;
         
         const mensaje = document.createElement('div');
         mensaje.id = 'loading-ia';
         mensaje.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); color: white; padding: 30px; border-radius: 10px; z-index: 10000; text-align: center; max-width: 300px;';
-        mensaje.innerHTML = '🤖 Analizando factura con IA...<br><br><small>Esto puede tardar unos segundos</small>';
+        mensaje.innerHTML = '🤖 Analizando factura...<br><br><small id="status-msg">Conectando con IA...</small>';
         document.body.appendChild(mensaje);
         
-        try {
-            const base64Image = currentPhoto.split(',')[1];
-            
-            // Prompt ULTRA mejorado para Gemini
-            const promptMejorado = `Eres un experto en análisis de facturas y tickets de compra españoles.
-
-Analiza esta imagen de factura/ticket y extrae la siguiente información:
-
-1. TOTAL FINAL A PAGAR (IMPORTANTE: el importe CON IVA incluido, el importe final que pagó el cliente)
-   - Busca: "TOTAL", "TOTAL A PAGAR", "IMPORTE", o el número más destacado
-   - DEBE incluir IVA
-   - Formato: solo el número con 2 decimales (ejemplo: "25.50")
-
-2. FECHA de la compra
-   - Formato: DD/MM/YYYY (ejemplo: "12/11/2025")
-
-3. COMERCIO / TIENDA
-   - Nombre del establecimiento (ejemplo: "Mercadona", "MediaMarkt", "Amazon")
-
-4. PRODUCTO / ARTÍCULO principal
-   - Si es un solo producto: su nombre (ejemplo: "Lavadora Samsung")
-   - Si son varios productos: describe la compra (ejemplo: "Compra semanal", "Electrónica")
-
-5. CATEGORÍA (elige LA MÁS ADECUADA):
-   - alimentacion: supermercados, comida
-   - tecnologia: móviles, ordenadores, tablets, auriculares
-   - electrodomesticos: lavadoras, neveras, microondas, aspiradoras
-   - ropa: tiendas de moda, ropa, zapatos
-   - hogar: muebles, decoración, menaje
-   - transporte: gasolina, taxis, transporte
-   - suministros: luz, agua, gas
-   - salud: farmacias, médicos
-   - ocio: restaurantes, cine, entretenimiento
-   - deportes: gimnasios, material deportivo
-   - educacion: libros, material escolar
-   - mascotas: tiendas de animales
-   - belleza: peluquerías, cosméticos
-   - servicios: reparaciones, servicios profesionales
-   - otros: si no encaja en ninguna anterior
-
-IMPORTANTE:
-- Si es una LAVADORA → categoría: "electrodomesticos" (NO "ropa")
-- Si es ROPA/ZAPATOS → categoría: "ropa"
-- El TOTAL debe ser CON IVA (el importe final)
-
-Responde ÚNICAMENTE con un objeto JSON válido (sin markdown, sin explicaciones):
-
-{
-  "total": "123.45",
-  "fecha": "12/11/2025",
-  "comercio": "MediaMarkt",
-  "articulo": "Lavadora Samsung",
-  "categoria": "electrodomesticos"
-}
-
-Si NO encuentras algún dato, pon: null`;
-
-            const response = await fetch(
-                `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`,
-                {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{
-                            parts: [
-                                { text: promptMejorado },
-                                {
-                                    inline_data: {
-                                        mime_type: 'image/jpeg',
-                                        data: base64Image
-                                    }
-                                }
-                            ]
-                        }],
-                        generationConfig: {
-                            temperature: 0.1,
-                            topK: 32,
-                            topP: 0.9,
-                            maxOutputTokens: 1000
-                        }
-                    })
-                }
-            );
-            
+        // Intentar primero con Gemini IA (la buena)
+        const resultadoGemini = await intentarGemini(currentPhoto, mensaje);
+        
+        if (resultadoGemini.exito) {
+            // ✅ Gemini funcionó
             const loadingMsg = document.getElementById('loading-ia');
             if (loadingMsg) document.body.removeChild(loadingMsg);
             
-            if (!response.ok) {
-                if (response.status === 429) {
-                    // Silenciosamente ofrecer entrada manual
-                    alert('El análisis automático no está disponible en este momento.\n\nPor favor, introduce los datos manualmente.');
-                    return;
-                }
-                throw new Error('Error en el análisis');
-            }
+            aplicarDatos(resultadoGemini.datos);
+        } else {
+            // ❌ Gemini falló, usar Tesseract automáticamente
+            console.log('⚠️ Gemini no disponible, usando OCR local...');
+            document.getElementById('status-msg').textContent = 'Analizando con OCR local...';
             
-            const data = await response.json();
-            
-            if (data.candidates && data.candidates[0]?.content?.parts) {
-                let texto = data.candidates[0].content.parts[0].text;
-                texto = texto.replace(/```json\n?/g, '').replace(/```/g, '').trim();
-                
-                const jsonMatch = texto.match(/\{[\s\S]*?\}/);
-                if (jsonMatch) texto = jsonMatch[0];
-                
-                const datos = JSON.parse(texto);
-                console.log('✅ Datos detectados por IA:', datos);
-                
-                let detectados = [];
-                let camposCompletos = 0;
-                
-                if (datos.total && datos.total !== 'null' && datos.total !== null) {
-                    const importeNumerico = String(datos.total).replace(',', '.');
-                    document.getElementById('importe').value = importeNumerico;
-                    detectados.push('💰 Total: ' + importeNumerico + '€');
-                    camposCompletos++;
-                }
-                
-                if (datos.fecha && datos.fecha !== 'null' && datos.fecha !== null) {
-                    if (modoManual) {
-                        fechaManual.value = datos.fecha;
-                    } else {
-                        const p = datos.fecha.split('/');
-                        if (p.length === 3) {
-                            fechaCalendario.value = p[2] + '-' + p[1] + '-' + p[0];
-                        }
-                    }
-                    detectados.push('📅 Fecha: ' + datos.fecha);
-                    camposCompletos++;
-                }
-                
-                if (datos.comercio || datos.articulo) {
-                    let concepto = '';
-                    if (datos.comercio && datos.comercio !== 'null' && datos.comercio !== null) {
-                        concepto = datos.comercio;
-                    }
-                    if (datos.articulo && datos.articulo !== 'null' && datos.articulo !== null) {
-                        if (concepto && datos.articulo.toLowerCase() !== concepto.toLowerCase()) {
-                            concepto += ' - ' + datos.articulo;
-                        } else if (!concepto) {
-                            concepto = datos.articulo;
-                        }
-                    }
-                    if (concepto) {
-                        document.getElementById('concepto').value = concepto;
-                        detectados.push('🏪 ' + concepto);
-                        camposCompletos++;
-                    }
-                }
-                
-                if (datos.categoria && datos.categoria !== 'null' && datos.categoria !== null) {
-                    const categoriaSelect = document.getElementById('categoria');
-                    const optionExists = Array.from(categoriaSelect.options).some(opt => opt.value === datos.categoria);
-                    if (optionExists) {
-                        categoriaSelect.value = datos.categoria;
-                        detectados.push('📦 ' + datos.categoria);
-                        camposCompletos++;
-                    }
-                }
-                
-                // Incrementar contador silenciosamente
-                peticionesHoy++;
-                localStorage.setItem('gemini_count', peticionesHoy.toString());
-                
-                if (camposCompletos > 0) {
-                    alert('✅ Detectados ' + camposCompletos + ' de 4 campos:\n\n' + 
-                          detectados.join('\n') + '\n\n' +
-                          '👀 Revisa los datos antes de guardar');
-                } else {
-                    alert('⚠️ No se pudieron detectar datos.\n\nIntroduce los datos manualmente.');
-                }
-            } else {
-                alert('⚠️ No se pudo analizar la factura.\n\nIntroduce los datos manualmente.');
-            }
-            
-        } catch (error) {
-            console.error('Error:', error);
-            const loadingMsg = document.getElementById('loading-ia');
-            if (loadingMsg) document.body.removeChild(loadingMsg);
-            
-            alert('⚠️ No se pudo analizar la factura.\n\nIntroduce los datos manualmente.');
+            await analizarConTesseract(currentPhoto, mensaje);
         }
     };
     reader.readAsDataURL(file);
+}
+
+// 🌟 INTENTAR CON GEMINI IA
+async function intentarGemini(imagenBase64, mensajeDiv) {
+    try {
+        const base64Image = imagenBase64.split(',')[1];
+        
+        const promptMejorado = `Analiza esta factura/ticket español y extrae:
+
+1. TOTAL con IVA (el importe final pagado)
+2. FECHA (DD/MM/YYYY)
+3. COMERCIO (nombre tienda)
+4. ARTÍCULO (producto principal o tipo de compra)
+5. CATEGORÍA:
+   - alimentacion: supermercados
+   - tecnologia: móviles, tablets, ordenadores
+   - electrodomesticos: lavadoras, neveras, microondas (IMPORTANTE: lavadora = electrodomesticos, NO ropa)
+   - ropa: tiendas de moda, ropa, zapatos
+   - hogar: muebles, decoración
+   - ocio: restaurantes, cine
+   - otros: resto
+
+Responde SOLO JSON:
+{"total":"123.45","fecha":"12/11/2025","comercio":"MediaMarkt","articulo":"Lavadora","categoria":"electrodomesticos"}`;
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 seg timeout
+        
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                signal: controller.signal,
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [
+                            { text: promptMejorado },
+                            { inline_data: { mime_type: 'image/jpeg', data: base64Image } }
+                        ]
+                    }],
+                    generationConfig: {
+                        temperature: 0.1,
+                        maxOutputTokens: 500
+                    }
+                })
+            }
+        );
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+            console.log('❌ Gemini HTTP error:', response.status);
+            return { exito: false };
+        }
+        
+        const data = await response.json();
+        
+        if (data.candidates && data.candidates[0]?.content?.parts) {
+            let texto = data.candidates[0].content.parts[0].text;
+            texto = texto.replace(/```json\n?/g, '').replace(/```/g, '').trim();
+            
+            const jsonMatch = texto.match(/\{[\s\S]*?\}/);
+            if (jsonMatch) texto = jsonMatch[0];
+            
+            const datos = JSON.parse(texto);
+            console.log('✅ Gemini detectó:', datos);
+            
+            return { exito: true, datos: datos };
+        }
+        
+        return { exito: false };
+        
+    } catch (error) {
+        console.log('⚠️ Error Gemini:', error.message);
+        return { exito: false };
+    }
+}
+
+// 🔍 ANALIZAR CON TESSERACT (BACKUP)
+async function analizarConTesseract(imagenBase64, mensajeDiv) {
+    try {
+        const progressDiv = document.getElementById('status-msg');
+        
+        const result = await Tesseract.recognize(
+            imagenBase64,
+            'spa+eng',
+            {
+                logger: info => {
+                    if (info.status === 'recognizing text') {
+                        const progress = Math.round(info.progress * 100);
+                        progressDiv.textContent = 'Leyendo texto: ' + progress + '%';
+                    }
+                }
+            }
+        );
+        
+        const texto = result.data.text;
+        console.log('📄 Texto OCR:', texto);
+        
+        const loadingMsg = document.getElementById('loading-ia');
+        if (loadingMsg) document.body.removeChild(loadingMsg);
+        
+        const datos = extraerDatosDeTexto(texto);
+        aplicarDatos(datos);
+        
+    } catch (error) {
+        console.error('❌ Error Tesseract:', error);
+        const loadingMsg = document.getElementById('loading-ia');
+        if (loadingMsg) document.body.removeChild(loadingMsg);
+        alert('⚠️ No se pudo analizar.\n\nIntroduce los datos manualmente.');
+    }
+}
+
+// 📝 APLICAR DATOS DETECTADOS
+function aplicarDatos(datos) {
+    let detectados = [];
+    let camposCompletos = 0;
+    
+    if (datos.total && datos.total !== 'null' && datos.total !== null) {
+        const importeNumerico = String(datos.total).replace(',', '.');
+        document.getElementById('importe').value = importeNumerico;
+        detectados.push('💰 Total: ' + importeNumerico + '€');
+        camposCompletos++;
+    }
+    
+    if (datos.fecha && datos.fecha !== 'null' && datos.fecha !== null) {
+        if (modoManual) {
+            fechaManual.value = datos.fecha;
+        } else {
+            const p = datos.fecha.split('/');
+            if (p.length === 3) {
+                fechaCalendario.value = p[2] + '-' + p[1] + '-' + p[0];
+            }
+        }
+        detectados.push('📅 Fecha: ' + datos.fecha);
+        camposCompletos++;
+    }
+    
+    if (datos.comercio || datos.articulo) {
+        let concepto = '';
+        if (datos.comercio && datos.comercio !== 'null' && datos.comercio !== null) {
+            concepto = datos.comercio;
+        }
+        if (datos.articulo && datos.articulo !== 'null' && datos.articulo !== null) {
+            if (concepto && datos.articulo.toLowerCase() !== concepto.toLowerCase()) {
+                concepto += ' - ' + datos.articulo;
+            } else if (!concepto) {
+                concepto = datos.articulo;
+            }
+        }
+        if (concepto) {
+            document.getElementById('concepto').value = concepto;
+            detectados.push('🏪 ' + concepto);
+            camposCompletos++;
+        }
+    }
+    
+    if (datos.categoria && datos.categoria !== 'null' && datos.categoria !== null) {
+        const categoriaSelect = document.getElementById('categoria');
+        const optionExists = Array.from(categoriaSelect.options).some(opt => opt.value === datos.categoria);
+        if (optionExists) {
+            categoriaSelect.value = datos.categoria;
+            detectados.push('📦 ' + datos.categoria);
+            camposCompletos++;
+        }
+    }
+    
+    if (camposCompletos > 0) {
+        alert('✅ Detectados ' + camposCompletos + ' campos:\n\n' + 
+              detectados.join('\n') + '\n\n' +
+              '👀 Revisa los datos antes de guardar');
+    } else {
+        alert('⚠️ No se detectaron datos.\n\nIntroduce manualmente.');
+    }
+}
+
+// 🔍 EXTRAER DATOS DE TEXTO (para Tesseract)
+function extraerDatosDeTexto(texto) {
+    const datos = { total: null, fecha: null, comercio: null, articulo: null, categoria: null };
+    
+    // TOTAL
+    const patronesTotal = [
+        /total[:\s]*(\d+[.,]\d{2})/gi,
+        /(\d+[.,]\d{2})\s*€/g
+    ];
+    
+    for (let patron of patronesTotal) {
+        patron.lastIndex = 0;
+        const match = texto.match(patron);
+        if (match) {
+            const nums = match[match.length - 1].match(/(\d+[.,]\d{2})/);
+            if (nums) {
+                datos.total = nums[0].replace(',', '.');
+                break;
+            }
+        }
+    }
+    
+    // FECHA
+    const matchFecha = texto.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](20\d{2})/);
+    if (matchFecha) {
+        const dia = matchFecha[1].padStart(2, '0');
+        const mes = matchFecha[2].padStart(2, '0');
+        datos.fecha = dia + '/' + mes + '/' + matchFecha[3];
+    }
+    
+    // COMERCIO
+    const comercios = {
+        'mercadona': 'Mercadona', 'carrefour': 'Carrefour', 'lidl': 'Lidl',
+        'mediamarkt': 'MediaMarkt', 'amazon': 'Amazon'
+    };
+    
+    const textoLower = texto.toLowerCase();
+    for (let [key, nombre] of Object.entries(comercios)) {
+        if (textoLower.includes(key)) {
+            datos.comercio = nombre;
+            break;
+        }
+    }
+    
+    datos.articulo = 'Compra';
+    
+    return datos;
 }
 
 form.addEventListener('submit', function(e) {
@@ -390,7 +440,7 @@ form.addEventListener('submit', function(e) {
         currentPhoto = null;
         toggleGarantiaPersonalizada();
         renderInvoices();
-        alert('✅ Factura guardada correctamente\n\n📊 Total de facturas: ' + invoices.length);
+        alert('✅ Factura guardada\n\n📊 Total: ' + invoices.length);
     }
 });
 
@@ -404,8 +454,8 @@ function renderInvoices(searchTerm = '') {
     
     if (lista.length === 0) {
         invoiceList.innerHTML = searchTerm ? 
-            '<div class="empty-state">No se encontraron facturas con "' + searchTerm + '"</div>' :
-            '<div class="empty-state">No hay facturas guardadas.<br>¡Añade tu primera factura!</div>';
+            '<div class="empty-state">No se encontraron facturas</div>' :
+            '<div class="empty-state">Sin facturas<br>¡Añade la primera!</div>';
         return;
     }
     
@@ -478,4 +528,4 @@ function formatearFecha(iso) {
 
 cargarFacturas();
 renderInvoices();
-console.log('✅ Gestor de Facturas PRO - IA Gemini activada');
+console.log('✅ Sistema Híbrido: Gemini IA + OCR Backup');
