@@ -1,4 +1,4 @@
-// 📱 GESTOR DE FACTURAS PRO - Versión Optimizada
+// 📱 GESTOR DE FACTURAS PRO - Detección Ultra Mejorada
 let invoices = [];
 let currentPhoto = null;
 let modoManual = false;
@@ -101,15 +101,22 @@ function comprimirImagen(base64Image) {
             const canvas = document.createElement('canvas');
             let width = img.width;
             let height = img.height;
-            if (width > 1000) {
-                height = (height * 1000) / width;
-                width = 1000;
+            
+            // Mejor resolución para OCR
+            if (width > 1200) {
+                height = (height * 1200) / width;
+                width = 1200;
             }
+            
             canvas.width = width;
             canvas.height = height;
             const ctx = canvas.getContext('2d');
+            
+            // Mejorar contraste para OCR
+            ctx.filter = 'contrast(1.2) brightness(1.1)';
             ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', 0.7));
+            
+            resolve(canvas.toDataURL('image/jpeg', 0.85));
         };
         img.onerror = () => resolve(base64Image);
         img.src = base64Image;
@@ -124,7 +131,7 @@ photoGallery.addEventListener('change', async (e) => {
     if (e.target.files[0]) await procesarFoto(e.target.files[0]);
 });
 
-// 🔍 PROCESAR FOTO CON OCR INTELIGENTE
+// 🔍 PROCESAR FOTO CON OCR MEJORADO
 async function procesarFoto(file) {
     if (!file) return;
     
@@ -142,14 +149,19 @@ async function procesarFoto(file) {
         
         const mensaje = document.createElement('div');
         mensaje.id = 'loading-ocr';
-        mensaje.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); color: white; padding: 30px; border-radius: 10px; z-index: 10000; text-align: center; max-width: 300px;';
-        mensaje.innerHTML = '🤖 Analizando factura...<br><br><small>Esto puede tardar unos segundos</small><br><br><div id="progress-text" style="margin-top:10px; font-size:12px;">Iniciando...</div>';
+        mensaje.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); color: white; padding: 30px; border-radius: 10px; z-index: 10000; text-align: center; max-width: 350px;';
+        mensaje.innerHTML = '🤖 Analizando factura...<br><br>' +
+                          '<div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; margin-top: 15px;">' +
+                          '<div id="progress-bar" style="background: #667eea; height: 8px; border-radius: 4px; width: 0%; transition: width 0.3s;"></div>' +
+                          '<div id="progress-text" style="margin-top: 10px; font-size: 12px;">Iniciando...</div>' +
+                          '</div>';
         document.body.appendChild(mensaje);
         
         try {
             const progressText = document.getElementById('progress-text');
+            const progressBar = document.getElementById('progress-bar');
             
-            // OCR con Tesseract
+            // OCR con Tesseract MEJORADO
             const result = await Tesseract.recognize(
                 currentPhoto,
                 'spa+eng', // Español e Inglés
@@ -157,20 +169,36 @@ async function procesarFoto(file) {
                     logger: info => {
                         if (info.status === 'recognizing text') {
                             const progress = Math.round(info.progress * 100);
-                            progressText.textContent = 'Procesando: ' + progress + '%';
+                            progressBar.style.width = progress + '%';
+                            progressText.textContent = 'Leyendo texto: ' + progress + '%';
+                        } else if (info.status === 'loading tesseract core') {
+                            progressText.textContent = 'Cargando motor OCR...';
+                        } else if (info.status === 'initializing tesseract') {
+                            progressText.textContent = 'Inicializando...';
                         }
                     }
                 }
             );
             
             const texto = result.data.text;
-            console.log('📄 Texto extraído:', texto);
+            console.log('📄 TEXTO COMPLETO EXTRAÍDO:');
+            console.log(texto);
+            console.log('═══════════════════════════');
             
             const loadingMsg = document.getElementById('loading-ocr');
             if (loadingMsg) document.body.removeChild(loadingMsg);
             
-            // Extraer datos mejorado
-            const datos = extraerDatosInteligente(texto);
+            // Extraer datos con lógica ULTRA mejorada
+            const datos = extraerDatosUltraMejorado(texto);
+            
+            // Mostrar en consola lo detectado
+            console.log('🔍 DATOS DETECTADOS:');
+            console.log('Total:', datos.total);
+            console.log('Fecha:', datos.fecha);
+            console.log('Comercio:', datos.comercio);
+            console.log('Producto:', datos.producto);
+            console.log('Categoría:', datos.categoria);
+            console.log('═══════════════════════════');
             
             let detectados = [];
             let camposCompletos = 0;
@@ -194,38 +222,54 @@ async function procesarFoto(file) {
                 camposCompletos++;
             }
             
-            if (datos.comercio) {
-                let conceptoFinal = datos.comercio;
+            if (datos.comercio || datos.producto) {
+                let conceptoFinal = '';
                 
-                // Si encontramos producto, agregarlo
-                if (datos.producto && datos.producto.toLowerCase() !== datos.comercio.toLowerCase()) {
-                    conceptoFinal += ' - ' + datos.producto;
+                if (datos.comercio) {
+                    conceptoFinal = datos.comercio;
                 }
                 
-                document.getElementById('concepto').value = conceptoFinal;
-                detectados.push('🏪 ' + conceptoFinal);
-                camposCompletos++;
+                if (datos.producto && datos.producto !== datos.comercio) {
+                    if (conceptoFinal) {
+                        conceptoFinal += ' - ' + datos.producto;
+                    } else {
+                        conceptoFinal = datos.producto;
+                    }
+                }
+                
+                if (conceptoFinal) {
+                    document.getElementById('concepto').value = conceptoFinal;
+                    detectados.push('🏪 ' + conceptoFinal);
+                    camposCompletos++;
+                }
             }
             
             if (datos.categoria) {
                 const categoriaSelect = document.getElementById('categoria');
                 categoriaSelect.value = datos.categoria;
-                detectados.push('📦 ' + datos.categoria);
+                detectados.push('📦 Categoría: ' + datos.categoria);
                 camposCompletos++;
             }
             
             if (camposCompletos > 0) {
-                alert('✅ Detectados ' + camposCompletos + ' campos:\n\n' + 
+                alert('✅ Detectados ' + camposCompletos + ' de 4 campos:\n\n' + 
                       detectados.join('\n') + '\n\n' +
-                      '👀 Revisa y completa los datos que falten');
+                      '👀 Revisa los datos y completa lo que falte antes de guardar');
             } else {
-                alert('⚠️ No se pudieron detectar datos claros.\n\n' +
-                      'Por favor, introduce los datos manualmente.\n\n' +
-                      '💡 Consejo: Asegúrate de que la foto esté bien enfocada y con buena iluminación.');
+                // Mostrar el texto para debug
+                alert('⚠️ No se pudieron detectar datos automáticamente.\n\n' +
+                      '💡 CONSEJOS:\n' +
+                      '• Asegúrate de que la foto esté enfocada\n' +
+                      '• Buena iluminación (sin sombras)\n' +
+                      '• Ticket recto (no torcido)\n' +
+                      '• Texto legible\n\n' +
+                      'Introduce los datos manualmente.');
+                      
+                console.log('⚠️ TEXTO EXTRAÍDO PARA DEBUG:', texto.substring(0, 500));
             }
             
         } catch (error) {
-            console.error('Error OCR:', error);
+            console.error('❌ Error OCR:', error);
             const loadingMsg = document.getElementById('loading-ocr');
             if (loadingMsg) document.body.removeChild(loadingMsg);
             alert('❌ Error al analizar la factura.\n\n' + 
@@ -235,8 +279,8 @@ async function procesarFoto(file) {
     reader.readAsDataURL(file);
 }
 
-// 🧠 EXTRACCIÓN INTELIGENTE DE DATOS
-function extraerDatosInteligente(texto) {
+// 🧠 EXTRACCIÓN ULTRA MEJORADA
+function extraerDatosUltraMejorado(texto) {
     const datos = { 
         total: null, 
         fecha: null, 
@@ -245,56 +289,110 @@ function extraerDatosInteligente(texto) {
         categoria: null 
     };
     
-    // Limpiar texto
-    texto = texto.replace(/\s+/g, ' ').trim();
+    // Normalizar texto
+    const textoOriginal = texto;
+    texto = texto.replace(/\r\n/g, '\n');
+    const lineas = texto.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    
+    console.log('📋 Total de líneas:', lineas.length);
     
     // ═══════════════════════════════════════
-    // 1. EXTRAER TOTAL (mejorado)
+    // 1. EXTRAER TOTAL - LÓGICA ULTRA MEJORADA
     // ═══════════════════════════════════════
     
-    // Buscar con palabras clave
-    const patronesTotal = [
-        /(?:total|importe|amount|suma|pagar|cobrar|a\s*pagar|total\s*a\s*pagar)[:\s]*€?\s*(\d+[.,]\d{2})/gi,
-        /(?:total|importe)[:\s]*(\d+[.,]\d{2})\s*€/gi,
-        /€\s*(\d+[.,]\d{2})/gi
+    // Estrategia 1: Buscar "TOTAL" con número cerca
+    const patronesTotalExacto = [
+        /total\s*:?\s*(\d+[.,]\d{2})/gi,
+        /total\s+(\d+[.,]\d{2})/gi,
+        /total\s*€?\s*(\d+[.,]\d{2})/gi,
+        /importe\s*:?\s*(\d+[.,]\d{2})/gi,
+        /a\s*pagar\s*:?\s*(\d+[.,]\d{2})/gi,
+        /(\d+[.,]\d{2})\s*€\s*total/gi,
+        /€\s*(\d+[.,]\d{2})\s*total/gi
     ];
     
-    for (let patron of patronesTotal) {
-        const match = texto.match(patron);
-        if (match) {
-            const numero = match[match.length - 1].match(/(\d+[.,]\d{2})/);
-            if (numero) {
-                datos.total = numero[0].replace(',', '.');
+    for (let patron of patronesTotalExacto) {
+        patron.lastIndex = 0; // Reset regex
+        const matches = texto.matchAll(patron);
+        for (let match of matches) {
+            const numero = match[1].replace(',', '.');
+            const valor = parseFloat(numero);
+            if (valor > 0 && valor < 10000) {
+                datos.total = numero;
+                console.log('✅ Total encontrado (método palabras clave):', datos.total);
                 break;
             }
         }
+        if (datos.total) break;
     }
     
-    // Si no encuentra, buscar el número más grande con 2 decimales
+    // Estrategia 2: Buscar en líneas con "TOTAL"
     if (!datos.total) {
-        const numeros = texto.match(/\d+[.,]\d{2}/g);
-        if (numeros && numeros.length > 0) {
-            const numerosOrdenados = numeros
+        for (let linea of lineas) {
+            if (/total|importe|pagar|suma/i.test(linea)) {
+                const numeros = linea.match(/\d+[.,]\d{2}/g);
+                if (numeros && numeros.length > 0) {
+                    // Coger el último número (suele ser el total)
+                    const numero = numeros[numeros.length - 1].replace(',', '.');
+                    const valor = parseFloat(numero);
+                    if (valor > 0 && valor < 10000) {
+                        datos.total = numero;
+                        console.log('✅ Total encontrado (línea con TOTAL):', datos.total);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    
+    // Estrategia 3: Buscar número con € al lado
+    if (!datos.total) {
+        const patronEuro = /(\d+[.,]\d{2})\s*€/g;
+        const matchesEuro = [];
+        let match;
+        while ((match = patronEuro.exec(texto)) !== null) {
+            const numero = match[1].replace(',', '.');
+            const valor = parseFloat(numero);
+            if (valor > 0 && valor < 10000) {
+                matchesEuro.push(valor);
+            }
+        }
+        
+        if (matchesEuro.length > 0) {
+            // El total suele ser el más grande
+            const mayorNumero = Math.max(...matchesEuro);
+            datos.total = mayorNumero.toFixed(2);
+            console.log('✅ Total encontrado (número más grande con €):', datos.total);
+        }
+    }
+    
+    // Estrategia 4: Último número grande de 2 decimales
+    if (!datos.total) {
+        const todosNumeros = texto.match(/\d+[.,]\d{2}/g);
+        if (todosNumeros && todosNumeros.length > 0) {
+            const numerosValidos = todosNumeros
                 .map(n => parseFloat(n.replace(',', '.')))
-                .filter(n => n > 0 && n < 100000)
+                .filter(n => n > 1 && n < 10000)
                 .sort((a, b) => b - a);
-            if (numerosOrdenados.length > 0) {
-                datos.total = numerosOrdenados[0].toFixed(2);
+            
+            if (numerosValidos.length > 0) {
+                datos.total = numerosValidos[0].toFixed(2);
+                console.log('✅ Total encontrado (último número válido):', datos.total);
             }
         }
     }
     
     // ═══════════════════════════════════════
-    // 2. EXTRAER FECHA (mejorado)
+    // 2. EXTRAER FECHA - ULTRA MEJORADO
     // ═══════════════════════════════════════
     
     const patronesFecha = [
-        // DD/MM/YYYY o DD-MM-YYYY
-        /(\d{1,2})[\/\-](\d{1,2})[\/\-](20\d{2})/,
+        // DD/MM/YYYY
+        /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](20\d{2})/,
         // DD/MM/YY
-        /(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})/,
-        // YYYY-MM-DD (ISO)
-        /(20\d{2})[\/\-](\d{1,2})[\/\-](\d{1,2})/
+        /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2})(?!\d)/,
+        // Fecha escrita: "12 NOV 2025"
+        /(\d{1,2})\s+(ene|feb|mar|abr|may|jun|jul|ago|sep|oct|nov|dic)[a-z]*\s+(20\d{2})/i
     ];
     
     for (let patron of patronesFecha) {
@@ -302,141 +400,180 @@ function extraerDatosInteligente(texto) {
         if (match) {
             let dia, mes, año;
             
-            if (match[3] && match[3].length === 4) {
-                // Formato DD/MM/YYYY
+            if (match[2] && isNaN(match[2])) {
+                // Fecha con mes en texto
+                const meses = {
+                    'ene': '01', 'feb': '02', 'mar': '03', 'abr': '04',
+                    'may': '05', 'jun': '06', 'jul': '07', 'ago': '08',
+                    'sep': '09', 'oct': '10', 'nov': '11', 'dic': '12'
+                };
+                dia = match[1].padStart(2, '0');
+                mes = meses[match[2].toLowerCase().substring(0, 3)];
+                año = match[3];
+            } else if (match[3] && match[3].length === 4) {
+                // DD/MM/YYYY
                 dia = match[1].padStart(2, '0');
                 mes = match[2].padStart(2, '0');
                 año = match[3];
-            } else if (match[1] && match[1].length === 4) {
-                // Formato YYYY-MM-DD
-                año = match[1];
-                mes = match[2].padStart(2, '0');
-                dia = match[3].padStart(2, '0');
             } else {
-                // Formato DD/MM/YY
+                // DD/MM/YY
                 dia = match[1].padStart(2, '0');
                 mes = match[2].padStart(2, '0');
                 año = '20' + match[3];
             }
             
-            // Validar fecha
+            // Validar
             const diaNum = parseInt(dia);
             const mesNum = parseInt(mes);
             
             if (diaNum >= 1 && diaNum <= 31 && mesNum >= 1 && mesNum <= 12) {
                 datos.fecha = dia + '/' + mes + '/' + año;
+                console.log('✅ Fecha encontrada:', datos.fecha);
                 break;
             }
         }
     }
     
     // ═══════════════════════════════════════
-    // 3. EXTRAER COMERCIO (mejorado)
+    // 3. EXTRAER COMERCIO - ULTRA MEJORADO
     // ═══════════════════════════════════════
     
-    const lineas = texto.split(/[\n\r]+/).filter(l => l.trim().length > 2);
+    const comerciosConocidos = {
+        'mercadona': 'Mercadona',
+        'carrefour': 'Carrefour',
+        'lidl': 'Lidl',
+        'aldi': 'Aldi',
+        'dia': 'Dia',
+        'eroski': 'Eroski',
+        'alcampo': 'Alcampo',
+        'amazon': 'Amazon',
+        'mediamarkt': 'MediaMarkt',
+        'media markt': 'MediaMarkt',
+        'worten': 'Worten',
+        'fnac': 'Fnac',
+        'el corte ingles': 'El Corte Inglés',
+        'corte ingles': 'El Corte Inglés',
+        'decathlon': 'Decathlon',
+        'zara': 'Zara',
+        'h&m': 'H&M',
+        'mango': 'Mango',
+        'primark': 'Primark',
+        'ikea': 'Ikea',
+        'leroy merlin': 'Leroy Merlin',
+        'bricomart': 'Bricomart',
+        'telepizza': 'Telepizza',
+        'dominos': 'Dominos',
+        'mcdonalds': 'McDonalds',
+        'mcdonald': 'McDonalds',
+        'burger king': 'Burger King',
+        'kfc': 'KFC',
+        'pccomponentes': 'PcComponentes'
+    };
     
-    // Lista de comercios conocidos
-    const comerciosConocidos = [
-        'mercadona', 'carrefour', 'lidl', 'aldi', 'dia', 'eroski', 'alcampo',
-        'amazon', 'ebay', 'aliexpress', 'pccomponentes',
-        'mediamarkt', 'worten', 'fnac', 'el corte ingles', 'decathlon',
-        'zara', 'h&m', 'mango', 'primark', 'pull&bear',
-        'ikea', 'leroy merlin', 'bricomart',
-        'mc donald', 'burger king', 'kfc', 'telepizza', 'dominos'
-    ];
+    const textoLower = texto.toLowerCase();
     
-    // Buscar en las primeras 10 líneas
-    for (let i = 0; i < Math.min(10, lineas.length); i++) {
-        const linea = lineas[i].trim().toLowerCase();
-        
-        // Buscar comercio conocido
-        for (let comercio of comerciosConocidos) {
-            if (linea.includes(comercio)) {
-                datos.comercio = capitalizar(comercio);
-                break;
-            }
-        }
-        
-        if (datos.comercio) break;
-        
-        // Si no, buscar líneas en mayúsculas
-        const lineaOriginal = lineas[i].trim();
-        const mayusculas = lineaOriginal.replace(/[^A-ZÑ]/g, '').length;
-        const totalCaracteres = lineaOriginal.replace(/[^A-ZÑa-zñ]/g, '').length;
-        
-        if (totalCaracteres > 3 && mayusculas > totalCaracteres * 0.6) {
-            datos.comercio = lineaOriginal;
+    // Buscar comercio conocido
+    for (let [clave, nombre] of Object.entries(comerciosConocidos)) {
+        if (textoLower.includes(clave)) {
+            datos.comercio = nombre;
+            console.log('✅ Comercio encontrado (conocido):', datos.comercio);
             break;
         }
     }
     
-    // ═══════════════════════════════════════
-    // 4. EXTRAER PRODUCTO (mejorado)
-    // ═══════════════════════════════════════
-    
-    // Buscar líneas de producto (después del comercio, antes del total)
-    if (lineas.length > 3) {
-        for (let i = 2; i < Math.min(15, lineas.length); i++) {
-            const linea = lineas[i].trim();
+    // Si no encuentra comercio conocido, buscar en primeras 5 líneas
+    if (!datos.comercio) {
+        for (let i = 0; i < Math.min(5, lineas.length); i++) {
+            const linea = lineas[i];
             
-            // Ignorar líneas con números de total
-            if (linea.match(/total|importe|subtotal/i)) continue;
-            if (linea.match(/\d+[.,]\d{2}\s*€/)) continue;
+            // Buscar líneas mayormente en mayúsculas y con longitud razonable
+            const mayusculas = (linea.match(/[A-ZÑÁÉÍÓÚ]/g) || []).length;
+            const letras = (linea.match(/[A-Za-zñÑáéíóúÁÉÍÓÚ]/g) || []).length;
             
-            // Buscar líneas descriptivas (entre 5 y 50 caracteres)
-            if (linea.length >= 5 && linea.length <= 50) {
-                // Limpiar caracteres raros
-                let producto = linea
-                    .replace(/[^\wáéíóúñÁÉÍÓÚÑ\s\-]/g, ' ')
-                    .replace(/\s+/g, ' ')
+            if (letras >= 3 && mayusculas >= letras * 0.6 && linea.length >= 3 && linea.length <= 40) {
+                // Limpiar la línea
+                let comercio = linea
+                    .replace(/[^A-Za-zñÑáéíóúÁÉÍÓÚ\s&\-]/g, '')
                     .trim();
                 
-                if (producto.length >= 5) {
-                    datos.producto = producto;
+                if (comercio.length >= 3) {
+                    datos.comercio = comercio;
+                    console.log('✅ Comercio encontrado (mayúsculas):', datos.comercio);
                     break;
                 }
             }
         }
     }
     
-    // Si no hay producto específico, usar genérico según comercio
+    // ═══════════════════════════════════════
+    // 4. EXTRAER PRODUCTO - ULTRA MEJORADO
+    // ═══════════════════════════════════════
+    
+    // Buscar después del comercio, antes de los totales
+    let inicioProductos = 3;
+    let finProductos = Math.min(20, lineas.length);
+    
+    for (let i = inicioProductos; i < finProductos; i++) {
+        const linea = lineas[i];
+        
+        // Ignorar líneas con keywords de total/subtotal
+        if (/total|subtotal|iva|descuento|suma|importe/i.test(linea)) continue;
+        
+        // Ignorar líneas que solo tienen números y símbolos
+        const soloLetras = linea.replace(/[^A-Za-zñÑáéíóúÁÉÍÓÚ]/g, '');
+        if (soloLetras.length < 3) continue;
+        
+        // Ignorar líneas muy cortas o muy largas
+        if (linea.length < 3 || linea.length > 60) continue;
+        
+        // Limpiar y validar
+        let producto = linea
+            .replace(/\d+[.,]\d{2}/g, '') // Quitar precios
+            .replace(/€/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+        
+        if (producto.length >= 4 && producto.length <= 50) {
+            datos.producto = producto;
+            console.log('✅ Producto encontrado:', datos.producto);
+            break;
+        }
+    }
+    
+    // Si no hay producto, poner genérico según comercio
     if (!datos.producto && datos.comercio) {
         const comercioLower = datos.comercio.toLowerCase();
         
         if (comercioLower.includes('mercadona') || comercioLower.includes('carrefour') || 
-            comercioLower.includes('lidl') || comercioLower.includes('dia')) {
+            comercioLower.includes('lidl') || comercioLower.includes('dia') ||
+            comercioLower.includes('eroski') || comercioLower.includes('alcampo')) {
             datos.producto = 'Compra';
-        } else if (comercioLower.includes('amazon') || comercioLower.includes('ebay')) {
-            datos.producto = 'Pedido online';
-        } else if (comercioLower.includes('mediamarkt') || comercioLower.includes('worten')) {
-            datos.producto = 'Electrónica';
+        } else if (comercioLower.includes('amazon')) {
+            datos.producto = 'Pedido';
         } else {
             datos.producto = 'Compra';
         }
     }
     
     // ═══════════════════════════════════════
-    // 5. DETECTAR CATEGORÍA (inteligente)
+    // 5. DETECTAR CATEGORÍA
     // ═══════════════════════════════════════
     
     const textoCompleto = (datos.comercio + ' ' + datos.producto + ' ' + texto).toLowerCase();
     
     const categorias = {
-        'alimentacion': ['mercadona', 'carrefour', 'lidl', 'aldi', 'dia', 'eroski', 'comida', 'aliment', 'supermercado'],
-        'tecnologia': ['amazon', 'pccomponentes', 'iphone', 'samsung', 'xiaomi', 'ordenador', 'portatil', 'movil', 'tablet', 'auriculares'],
-        'electrodomesticos': ['mediamarkt', 'worten', 'lavadora', 'frigorifico', 'microondas', 'aspiradora', 'electrodomestico'],
-        'ropa': ['zara', 'h&m', 'mango', 'primark', 'pull&bear', 'bershka', 'camisa', 'pantalon', 'vestido', 'ropa'],
-        'hogar': ['ikea', 'leroy merlin', 'mueble', 'decoracion', 'hogar', 'casa'],
-        'transporte': ['gasolina', 'diesel', 'repsol', 'cepsa', 'bp', 'combustible', 'taxi', 'uber', 'cabify'],
-        'ocio': ['cine', 'teatro', 'concierto', 'entrada', 'tickets', 'ocio'],
-        'salud': ['farmacia', 'medicamento', 'parafarmacia', 'salud', 'medico']
+        'alimentacion': ['mercadona', 'carrefour', 'lidl', 'aldi', 'dia', 'eroski', 'alcampo', 'supermercado', 'comida', 'aliment'],
+        'tecnologia': ['amazon', 'pccomponentes', 'mediamarkt', 'worten', 'fnac', 'iphone', 'samsung', 'xiaomi', 'ordenador', 'portatil', 'movil', 'auriculares'],
+        'ropa': ['zara', 'h&m', 'mango', 'primark', 'pull&bear', 'bershka', 'stradivarius', 'ropa', 'camisa', 'pantalon'],
+        'hogar': ['ikea', 'leroy merlin', 'bricomart', 'mueble', 'decoracion', 'hogar'],
+        'ocio': ['telepizza', 'dominos', 'mcdonalds', 'burger', 'kfc', 'cine', 'restaurante']
     };
     
-    for (let [categoria, palabrasClave] of Object.entries(categorias)) {
-        for (let palabra of palabrasClave) {
+    for (let [categoria, palabras] of Object.entries(categorias)) {
+        for (let palabra of palabras) {
             if (textoCompleto.includes(palabra)) {
                 datos.categoria = categoria;
+                console.log('✅ Categoría detectada:', datos.categoria);
                 break;
             }
         }
@@ -444,12 +581,6 @@ function extraerDatosInteligente(texto) {
     }
     
     return datos;
-}
-
-function capitalizar(texto) {
-    return texto.split(' ').map(palabra => 
-        palabra.charAt(0).toUpperCase() + palabra.slice(1).toLowerCase()
-    ).join(' ');
 }
 
 form.addEventListener('submit', function(e) {
@@ -584,4 +715,4 @@ function formatearFecha(iso) {
 
 cargarFacturas();
 renderInvoices();
-console.log('✅ Gestor de Facturas PRO iniciado');
+console.log('✅ Gestor de Facturas PRO iniciado - Versión Ultra Mejorada');
